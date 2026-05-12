@@ -1,44 +1,121 @@
-import numpy as np
+import pandas as pd
 
 
-def ema(values, period):
+# ================= EMA =================
+def calculate_ema(
+    closes,
+    period=20
+):
 
-    weights = np.exp(np.linspace(-1., 0., period))
-    weights /= weights.sum()
+    try:
 
-    return np.convolve(values, weights, mode='valid')[-1]
+        series = pd.Series(closes)
 
+        ema = series.ewm(
+            span=period,
+            adjust=False
+        ).mean()
 
-def rsi(closes, period=14):
+        return float(ema.iloc[-1])
 
-    deltas = np.diff(closes)
+    except Exception:
 
-    seed = deltas[:period]
-
-    up = seed[seed >= 0].sum() / period
-    down = -seed[seed < 0].sum() / period
-
-    rs = up / down if down != 0 else 0
-
-    return 100 - (100 / (1 + rs))
+        return None
 
 
-def atr(candles, period=14):
+# ================= RSI =================
+def calculate_rsi(
+    closes,
+    period=14
+):
 
-    trs = []
+    try:
 
-    for i in range(1, len(candles)):
+        series = pd.Series(closes)
 
-        high = candles[i]["high"]
-        low = candles[i]["low"]
-        prev_close = candles[i - 1]["close"]
+        delta = series.diff()
 
-        tr = max(
-            high - low,
-            abs(high - prev_close),
-            abs(low - prev_close)
+        gain = delta.clip(
+            lower=0
         )
 
-        trs.append(tr)
+        loss = -delta.clip(
+            upper=0
+        )
 
-    return sum(trs[-period:]) / period
+        avg_gain = gain.rolling(
+            window=period
+        ).mean()
+
+        avg_loss = loss.rolling(
+            window=period
+        ).mean()
+
+        rs = avg_gain / avg_loss
+
+        rsi = (
+            100
+            - (
+                100
+                / (1 + rs)
+            )
+        )
+
+        return float(rsi.iloc[-1])
+
+    except Exception:
+
+        return None
+
+
+# ================= ATR =================
+def calculate_atr(
+    highs,
+    lows,
+    closes,
+    period=14
+):
+
+    try:
+
+        high = pd.Series(highs)
+
+        low = pd.Series(lows)
+
+        close = pd.Series(closes)
+
+        tr1 = high - low
+
+        tr2 = (
+            high - close.shift()
+        ).abs()
+
+        tr3 = (
+            low - close.shift()
+        ).abs()
+
+        tr = pd.concat(
+
+            [
+
+                tr1,
+                tr2,
+                tr3
+
+            ],
+
+            axis=1
+
+        ).max(axis=1)
+
+        atr = tr.rolling(
+            window=period
+        ).mean()
+
+        return float(
+            atr.iloc[-1]
+        )
+
+    except Exception:
+
+        return None
