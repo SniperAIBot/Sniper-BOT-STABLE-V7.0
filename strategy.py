@@ -1,160 +1,325 @@
 from indicators import (
-    ema,
-    rsi,
-    atr
+    calculate_ema,
+    calculate_rsi,
+    calculate_atr
 )
 
+from logger import logger
 
-# ================= ANALYZE =================
-def analyze(symbol, htf, ltf, regime):
+
+# ================= STRATEGY ENGINE =================
+def generate_signal(
+    symbol,
+    candles,
+    market_regime="NEUTRAL"
+):
 
     try:
 
+        # ================= SAFETY =================
+        if len(candles) < 60:
+
+            logger.warning(
+                f"⚠️ NOT ENOUGH DATA: {symbol}"
+            )
+
+            return None
+
+        # ================= CLOSE PRICES =================
         closes = [
+
             c["close"]
-            for c in ltf
+
+            for c in candles
+
         ]
 
-        current_price = closes[-1]
+        highs = [
 
-        ema20 = ema(closes, 20)
+            c["high"]
 
-        ema50 = ema(closes, 50)
+            for c in candles
 
-        rsi_value = rsi(closes)
+        ]
 
-        atr_value = atr(ltf)
+        lows = [
 
-        if atr_value <= 0:
-            return None
+            c["low"]
 
-        # ================= TREND =================
-        trend = None
+            for c in candles
 
-        # BUY TREND
-        if (
-            ema20 > ema50
-            and closes[-1] > closes[-2]
-        ):
+        ]
 
-            trend = "UP"
+        volumes = [
 
-        # SELL TREND
-        elif (
-            ema20 < ema50
-            and closes[-1] < closes[-2]
-        ):
+            c["volume"]
 
-            trend = "DOWN"
+            for c in candles
 
-        else:
+        ]
 
-            return None
 
-        # ================= BUY =================
-        if trend == "UP":
-
-            entry = current_price
-
-            sl = entry - atr_value
-
-            tp = entry + (
-                atr_value * 1.5
-            )
-
-            signal = "شراء 📈"
-
-        # ================= SELL =================
-        else:
-
-            entry = current_price
-
-            sl = entry + atr_value
-
-            tp = entry - (
-                atr_value * 1.5
-            )
-
-            signal = "بيع 📉"
-
-        # ================= RR =================
-        rr = abs(
-            tp - entry
-        ) / abs(
-            entry - sl
+        # ================= INDICATORS =================
+        ema20 = calculate_ema(
+            closes,
+            20
         )
 
-        # ================= SCORE =================
-        score = 30
+        ema50 = calculate_ema(
+            closes,
+            50
+        )
 
-        # EMA POWER
-        ema_gap = abs(
-            ema20 - ema50
-        ) / current_price
+        rsi = calculate_rsi(
+            closes,
+            14
+        )
 
-        if ema_gap > 0.002:
-            score += 15
+        atr = calculate_atr(
+            highs,
+            lows,
+            closes,
+            14
+        )
 
-        # RSI STRENGTH
-        if trend == "UP":
+        # SAFETY
+        if (
+            ema20 is None
+            or ema50 is None
+            or rsi is None
+            or atr is None
+        ):
 
-            if rsi_value > 55:
-                score += 20
+            logger.warning(
+                f"⚠️ INDICATOR FAILURE: {symbol}"
+            )
 
-            if rsi_value > 65:
-                score += 10
+            return None
+
+
+        # ================= CURRENT DATA =================
+        price = closes[-1]
+
+        volume_now = volumes[-1]
+
+        avg_volume = (
+            sum(volumes[-20:])
+            / 20
+        )
+
+        atr_percent = (
+            atr / price
+        ) * 100
+
+
+        # ================= FILTER DEAD MARKET =================
+        if atr_percent < 0.25:
+
+            logger.info(
+                f"⏭️ LOW VOLATILITY SKIP: {symbol}"
+            )
+
+            return None
+
+
+        # ================= TREND =================
+        bullish_trend = ema20 > ema50
+        bearish_trend = ema20 < ema50
+
+
+        # ================= MOMENTUM =================
+        bullish_momentum = rsi >= 55
+        bearish_momentum = rsi <= 45
+
+
+        # ================= VOLUME =================
+        strong_volume = volume_now > avg_volume
+
+
+        # ================= SCORE ENGINE =================
+        buy_score = 0
+        sell_score = 0
+
+
+        # ================= EMA =================
+        if bullish_trend:
+            buy_score += 25
+
+        if bearish_trend:
+            sell_score += 25
+
+
+        # ================= RSI =================
+        if bullish_momentum:
+            buy_score += 25
+
+        if bearish_momentum:
+            sell_score += 25
+
+
+        # ================= MARKET REGIME =================
+        if market_regime == "BULL":
+            buy_score += 20
+            sell_score -= 10
+
+        elif market_regime == "BEAR":
+            sell_score += 20
+            buy_score -= 10
+
+
+        # ================= ATR =================
+        if atr_percent >= 0.5:
+            buy_score += 10
+            sell_score += 10
+
+
+        # ================= VOLUME =================
+        if strong_volume:
+            buy_score += 15
+            sell_score += 15
+
+
+        # ================= DETERMINE DIRECTION =================
+        direction = None
+        confidence = 0
+
+
+        if buy_score > sell_score:
+
+            direction = "BUY"
+            confidence = buy_score
+
+        elif sell_score > buy_score:
+
+            direction = "SELL"
+            confidence = sell_score
 
         else:
 
-            if rsi_value < 45:
-                score += 20
+            logger.info(
+                f"⚖️ NO CLEAR DIRECTION: {symbol}"
+            )
 
-            if rsi_value < 35:
-                score += 10
+            return None
 
-        # MOMENTUM
-        momentum = abs(
-            closes[-1] - closes[-3]
-        ) / current_price
 
-        if momentum > 0.003:
-            score += 10
+        # ================= MINIMUM CONFIDENCE =================
+        if confidence < 30:
 
-        # LIMITS
-        if score > 85:
-            score = 85
+            logger.info(
+                f"❌ LOW CONFIDENCE: "
+                f"{symbol} {confidence}%"
+            )
 
-        if score < 30:
-            score = 30
+            return None
 
-        return {
+
+        # ================= ENTRY =================
+        entry = price
+
+
+        # ================= TP / SL =================
+        if direction == "BUY":
+
+            take_profit = (
+                entry + (atr * 1.5)
+            )
+
+            stop_loss = (
+                entry - atr
+            )
+
+        else:
+
+            take_profit = (
+                entry - (atr * 1.5)
+            )
+
+            stop_loss = (
+                entry + atr
+            )
+
+
+        # ================= RISK REWARD =================
+        risk = abs(
+            entry - stop_loss
+        )
+
+        reward = abs(
+            take_profit - entry
+        )
+
+        rr = round(
+            reward / risk,
+            2
+        )
+
+
+        # ================= FINAL SIGNAL =================
+        signal = {
 
             "symbol": symbol,
 
-            "trend": trend,
+            "direction": direction,
 
-            "signal": signal,
+            "entry": round(entry, 6),
 
-            "entry": float(entry),
+            "take_profit": round(
+                take_profit,
+                6
+            ),
 
-            "tp": float(tp),
+            "stop_loss": round(
+                stop_loss,
+                6
+            ),
 
-            "sl": float(sl),
+            "confidence": max(
+                30,
+                min(confidence, 85)
+            ),
 
-            "rr": float(rr),
+            "rsi": round(rsi, 2),
 
-            "score": int(score),
+            "atr": round(atr, 6),
 
-            "rsi": float(rsi_value),
+            "atr_percent": round(
+                atr_percent,
+                2
+            ),
 
-            "atr": float(atr_value)
+            "ema20": round(
+                ema20,
+                6
+            ),
+
+            "ema50": round(
+                ema50,
+                6
+            ),
+
+            "rr": rr,
+
+            "market_regime": market_regime
 
         }
 
+
+        logger.info(
+            f"✅ SIGNAL GENERATED: "
+            f"{symbol} "
+            f"{direction} "
+            f"{confidence}%"
+        )
+
+        return signal
+
+
     except Exception as e:
 
-        print(
-            f"STRATEGY ERROR: {e}"
+        logger.error(
+            f"❌ STRATEGY ERROR: "
+            f"{symbol} {e}"
         )
 
         return None
