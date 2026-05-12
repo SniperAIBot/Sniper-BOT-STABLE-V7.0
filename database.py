@@ -1,84 +1,87 @@
 import os
 import psycopg2
-
-from datetime import datetime
+from psycopg2.extras import RealDictCursor
 
 from logger import logger
 
 
-# ================= CONNECTION =================
+# ================= DATABASE URL =================
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)
+
+
+# ================= CONNECT =================
 def get_connection():
 
-    return psycopg2.connect(
-        os.getenv("DATABASE_URL"),
-        sslmode="require"
-    )
-
-
-# ================= SAFE FLOAT =================
-def safe_float(value):
-
-    try:
-        return float(value)
-
-    except:
-        return 0.0
-
-
-# ================= SAFE INT =================
-def safe_int(value):
-
-    try:
-        return int(value)
-
-    except:
-        return 0
-
-
-# ================= INIT DATABASE =================
-def init_db():
-
     try:
 
-        conn = get_connection()
+        conn = psycopg2.connect(
+            DATABASE_URL
+        )
+
+        return conn
+
+    except Exception as e:
+
+        logger.error(
+            f"❌ DATABASE CONNECTION ERROR: {e}"
+        )
+
+        return None
+
+
+# ================= INITIALIZE DATABASE =================
+def initialize_database():
+
+    conn = get_connection()
+
+    if conn is None:
+        return
+
+    try:
 
         cur = conn.cursor()
 
-        cur.execute("""
+        cur.execute(
 
-        CREATE TABLE IF NOT EXISTS signals (
+            """
+            CREATE TABLE IF NOT EXISTS signals (
 
-            id SERIAL PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
 
-            time TEXT,
+                symbol TEXT,
 
-            symbol TEXT,
+                direction TEXT,
 
-            trend TEXT,
+                entry DOUBLE PRECISION,
 
-            entry DOUBLE PRECISION,
+                take_profit DOUBLE PRECISION,
 
-            tp DOUBLE PRECISION,
+                stop_loss DOUBLE PRECISION,
 
-            sl DOUBLE PRECISION,
+                confidence DOUBLE PRECISION,
 
-            rr DOUBLE PRECISION,
+                rsi DOUBLE PRECISION,
 
-            score INTEGER,
+                atr DOUBLE PRECISION,
 
-            rsi DOUBLE PRECISION,
+                rr DOUBLE PRECISION,
 
-            atr DOUBLE PRECISION,
+                market_regime TEXT,
 
-            status TEXT DEFAULT 'OPEN',
+                status TEXT DEFAULT 'OPEN',
 
-            close_price DOUBLE PRECISION,
+                result TEXT DEFAULT '',
 
-            close_time TEXT
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                closed_at TIMESTAMP
+
+            );
+            """
 
         )
-
-        """)
 
         conn.commit()
 
@@ -93,76 +96,75 @@ def init_db():
     except Exception as e:
 
         logger.error(
-            f"❌ DB INIT ERROR: {e}"
+            f"❌ DATABASE INIT ERROR: {e}"
         )
 
 
 # ================= SAVE SIGNAL =================
 def save_signal(signal):
 
-    try:
+    conn = get_connection()
 
-        conn = get_connection()
+    if conn is None:
+        return
+
+    try:
 
         cur = conn.cursor()
 
-        cur.execute("""
+        cur.execute(
 
-        INSERT INTO signals (
+            """
+            INSERT INTO signals (
 
-            time,
-            symbol,
-            trend,
-            entry,
-            tp,
-            sl,
-            rr,
-            score,
-            rsi,
-            atr,
-            status
+                symbol,
+                direction,
+                entry,
+                take_profit,
+                stop_loss,
+                confidence,
+                rsi,
+                atr,
+                rr,
+                market_regime,
+                status
+
+            )
+
+            VALUES (
+
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+
+            );
+            """,
+
+            (
+
+                signal["symbol"],
+                signal["direction"],
+                signal["entry"],
+                signal["take_profit"],
+                signal["stop_loss"],
+                signal["confidence"],
+                signal["rsi"],
+                signal["atr"],
+                signal["rr"],
+                signal["market_regime"],
+                "OPEN"
+
+            )
 
         )
-
-        VALUES (
-
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            %s,
-            'OPEN'
-
-        )
-
-        """, (
-
-            str(datetime.now()),
-
-            signal["symbol"],
-
-            signal["trend"],
-
-            safe_float(signal["entry"]),
-
-            safe_float(signal["tp"]),
-
-            safe_float(signal["sl"]),
-
-            safe_float(signal["rr"]),
-
-            safe_int(signal["score"]),
-
-            safe_float(signal["rsi"]),
-
-            safe_float(signal["atr"])
-
-        ))
 
         conn.commit()
 
@@ -185,29 +187,34 @@ def save_signal(signal):
 # ================= GET OPEN SIGNALS =================
 def get_open_signals():
 
+    conn = get_connection()
+
+    if conn is None:
+        return []
+
     try:
 
-        conn = get_connection()
+        cur = conn.cursor(
+            cursor_factory=RealDictCursor
+        )
 
-        cur = conn.cursor()
+        cur.execute(
 
-        cur.execute("""
+            """
+            SELECT *
+            FROM signals
+            WHERE status = 'OPEN';
+            """
 
-        SELECT *
+        )
 
-        FROM signals
-
-        WHERE status = 'OPEN'
-
-        """)
-
-        rows = cur.fetchall()
+        signals = cur.fetchall()
 
         cur.close()
 
         conn.close()
 
-        return rows
+        return signals
 
     except Exception as e:
 
@@ -219,39 +226,42 @@ def get_open_signals():
 
 
 # ================= CLOSE SIGNAL =================
-def close_signal(signal_id, status, close_price):
+def close_signal(
+    signal_id,
+    result
+):
+
+    conn = get_connection()
+
+    if conn is None:
+        return
 
     try:
 
-        conn = get_connection()
-
         cur = conn.cursor()
 
-        cur.execute("""
+        cur.execute(
 
-        UPDATE signals
+            """
+            UPDATE signals
 
-        SET
+            SET
 
-            status = %s,
+                status = 'CLOSED',
+                result = %s,
+                closed_at = CURRENT_TIMESTAMP
 
-            close_price = %s,
+            WHERE id = %s;
+            """,
 
-            close_time = %s
+            (
 
-        WHERE id = %s
+                result,
+                signal_id
 
-        """, (
+            )
 
-            status,
-
-            safe_float(close_price),
-
-            str(datetime.now()),
-
-            signal_id
-
-        ))
+        )
 
         conn.commit()
 
@@ -261,7 +271,7 @@ def close_signal(signal_id, status, close_price):
 
         logger.info(
             f"✅ SIGNAL CLOSED: "
-            f"{signal_id}"
+            f"{signal_id} {result}"
         )
 
     except Exception as e:
@@ -269,69 +279,3 @@ def close_signal(signal_id, status, close_price):
         logger.error(
             f"❌ CLOSE SIGNAL ERROR: {e}"
         )
-
-
-# ================= GET STATS =================
-def get_stats():
-
-    try:
-
-        conn = get_connection()
-
-        cur = conn.cursor()
-
-        cur.execute("""
-
-        SELECT COUNT(*)
-
-        FROM signals
-
-        """)
-
-        total = cur.fetchone()[0]
-
-        cur.execute("""
-
-        SELECT COUNT(*)
-
-        FROM signals
-
-        WHERE status='TP'
-
-        """)
-
-        wins = cur.fetchone()[0]
-
-        cur.execute("""
-
-        SELECT COUNT(*)
-
-        FROM signals
-
-        WHERE status='SL'
-
-        """)
-
-        losses = cur.fetchone()[0]
-
-        cur.close()
-
-        conn.close()
-
-        return {
-            "total": total,
-            "wins": wins,
-            "losses": losses
-        }
-
-    except Exception as e:
-
-        logger.error(
-            f"❌ GET STATS ERROR: {e}"
-        )
-
-        return {
-            "total": 0,
-            "wins": 0,
-            "losses": 0
-        }
