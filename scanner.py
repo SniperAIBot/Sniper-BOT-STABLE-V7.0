@@ -1,51 +1,110 @@
 import requests
-from indicators import ema
+
+from logger import logger
 
 
-# ================= BINANCE =================
-BASE_URL = "https://data-api.binance.vision"
+# ================= BINANCE API =================
+BASE_URL = "https://api.binance.com"
 
 
-# ================= REQUEST =================
-def get_json(url):
+# ================= SYMBOLS =================
+SYMBOLS = [
+
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT",
+    "SOLUSDT",
+    "XRPUSDT",
+    "ATOMUSDT",
+    "ADAUSDT",
+    "LINKUSDT",
+    "AVAXUSDT",
+    "LTCUSDT",
+    "DOTUSDT",
+    "UNIUSDT",
+    "APEUSDT",
+    "AAVEUSDT",
+    "ICPUSDT",
+    "INJUSDT",
+    "APTUSDT",
+    "CHIPUSDT",
+    "TAOUSDT",
+    "XLMUSDT",
+    "FETUSDT",
+    "FILUSDT",
+    "ZECUSDT",
+    "CHZUSDT",
+    "SEIUSDT"
+
+]
+
+
+# ================= SAFE REQUEST =================
+def safe_request(
+    endpoint,
+    params=None
+):
 
     try:
 
         response = requests.get(
-            url,
+
+            f"{BASE_URL}{endpoint}",
+
+            params=params,
+
             timeout=10
+
         )
+
+        # STATUS CHECK
+        if response.status_code != 200:
+
+            logger.error(
+                f"❌ BINANCE STATUS ERROR: "
+                f"{response.status_code}"
+            )
+
+            return None
 
         return response.json()
 
     except Exception as e:
 
-        print(f"SCANNER ERROR: {e}")
+        logger.error(
+            f"❌ REQUEST ERROR: {e}"
+        )
 
         return None
 
 
-# ================= KLINES =================
+# ================= GET KLINES =================
 def get_klines(
     symbol,
-    interval="5m",
+    interval="15m",
     limit=100
 ):
 
     try:
 
-        url = (
-            f"{BASE_URL}/api/v3/klines"
-            f"?symbol={symbol}"
-            f"&interval={interval}"
-            f"&limit={limit}"
+        data = safe_request(
+
+            "/api/v3/klines",
+
+            {
+
+                "symbol": symbol,
+
+                "interval": interval,
+
+                "limit": limit
+
+            }
+
         )
 
-        data = get_json(url)
-
-        if not isinstance(data, list):
-
-            return None
+        if data is None:
+            return []
 
         candles = []
 
@@ -69,9 +128,12 @@ def get_klines(
 
     except Exception as e:
 
-        print(f"KLINES ERROR: {e}")
+        logger.error(
+            f"❌ KLINES ERROR: "
+            f"{symbol} {e}"
+        )
 
-        return None
+        return []
 
 
 # ================= BTC REGIME =================
@@ -82,34 +144,54 @@ def btc_regime():
         candles = get_klines(
             "BTCUSDT",
             "1h",
-            100
+            50
         )
 
-        if not candles:
+        if len(candles) < 50:
 
-            return "UNKNOWN"
+            return "NEUTRAL"
 
         closes = [
+
             c["close"]
+
             for c in candles
+
         ]
 
-        ema20 = ema(closes, 20)
+        current = closes[-1]
 
-        ema50 = ema(closes, 50)
+        old = closes[0]
 
-        if ema20 > ema50:
+        change = (
+            (current - old)
+            / old
+        ) * 100
+
+        logger.info(
+            f"📊 BTC CHANGE: "
+            f"{round(change, 2)}%"
+        )
+
+        # ================= BULL =================
+        if change >= 2:
 
             return "BULL"
 
-        elif ema20 < ema50:
+        # ================= BEAR =================
+        elif change <= -2:
 
             return "BEAR"
 
-        return "RANGE"
+        # ================= SIDEWAYS =================
+        else:
+
+            return "NEUTRAL"
 
     except Exception as e:
 
-        print(f"BTC REGIME ERROR: {e}")
+        logger.error(
+            f"❌ BTC REGIME ERROR: {e}"
+        )
 
-        return "UNKNOWN"
+        return "NEUTRAL"
