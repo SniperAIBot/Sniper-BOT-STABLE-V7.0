@@ -1,325 +1,385 @@
-from indicators import (
-    calculate_ema,
-    calculate_rsi,
-    calculate_atr
-)
+import pandas as pd
+import numpy as np
 
 from logger import logger
 
 
-# ================= STRATEGY ENGINE =================
-def generate_signal(
-    symbol,
-    candles,
-    market_regime="NEUTRAL"
+# ================= EMA =================
+def ema(series, period):
+
+    return series.ewm(
+        span=period,
+        adjust=False
+    ).mean()
+
+
+# ================= RSI =================
+def rsi(series, period=14):
+
+    delta = series.diff()
+
+    gain = (
+        delta.where(delta > 0, 0)
+        .rolling(period)
+        .mean()
+    )
+
+    loss = (
+        -delta.where(delta < 0, 0)
+        .rolling(period)
+        .mean()
+    )
+
+    rs = gain / loss
+
+    return 100 - (
+        100 / (1 + rs)
+    )
+
+
+# ================= ATR =================
+def atr(df, period=14):
+
+    high_low = (
+        df["high"] - df["low"]
+    )
+
+    high_close = np.abs(
+        df["high"] -
+        df["close"].shift()
+    )
+
+    low_close = np.abs(
+        df["low"] -
+        df["close"].shift()
+    )
+
+    tr = pd.concat(
+        [
+            high_low,
+            high_close,
+            low_close
+        ],
+        axis=1
+    ).max(axis=1)
+
+    return tr.rolling(period).mean()
+
+
+# ================= ANALYZE =================
+def analyze(
+    candles_5m,
+    candles_15m,
+    candles_1h
 ):
 
     try:
 
-        # ================= SAFETY =================
-        if len(candles) < 60:
+        # ================= DATAFRAMES =================
+        df5 = pd.DataFrame(candles_5m)
+        df15 = pd.DataFrame(candles_15m)
+        df1h = pd.DataFrame(candles_1h)
 
-            logger.warning(
-                f"⚠️ NOT ENOUGH DATA: {symbol}"
-            )
+        for df in [df5, df15, df1h]:
 
-            return None
+            for col in [
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume"
+            ]:
 
-        # ================= CLOSE PRICES =================
-        closes = [
-
-            c["close"]
-
-            for c in candles
-
-        ]
-
-        highs = [
-
-            c["high"]
-
-            for c in candles
-
-        ]
-
-        lows = [
-
-            c["low"]
-
-            for c in candles
-
-        ]
-
-        volumes = [
-
-            c["volume"]
-
-            for c in candles
-
-        ]
-
+                df[col] = df[col].astype(float)
 
         # ================= INDICATORS =================
-        ema20 = calculate_ema(
-            closes,
+        df5["ema20"] = ema(
+            df5["close"],
             20
         )
 
-        ema50 = calculate_ema(
-            closes,
+        df5["ema50"] = ema(
+            df5["close"],
             50
         )
 
-        rsi = calculate_rsi(
-            closes,
-            14
+        df15["ema20"] = ema(
+            df15["close"],
+            20
         )
 
-        atr = calculate_atr(
-            highs,
-            lows,
-            closes,
-            14
+        df15["ema50"] = ema(
+            df15["close"],
+            50
         )
 
-        # SAFETY
-        if (
-            ema20 is None
-            or ema50 is None
-            or rsi is None
-            or atr is None
-        ):
+        df1h["ema20"] = ema(
+            df1h["close"],
+            20
+        )
 
-            logger.warning(
-                f"⚠️ INDICATOR FAILURE: {symbol}"
-            )
+        df1h["ema50"] = ema(
+            df1h["close"],
+            50
+        )
+
+        df5["rsi"] = rsi(
+            df5["close"]
+        )
+
+        df5["atr"] = atr(df5)
+
+        # ================= CURRENT VALUES =================
+        close = df5["close"].iloc[-1]
+
+        ema20_5m = df5["ema20"].iloc[-1]
+        ema50_5m = df5["ema50"].iloc[-1]
+
+        ema20_15m = df15["ema20"].iloc[-1]
+        ema50_15m = df15["ema50"].iloc[-1]
+
+        ema20_1h = df1h["ema20"].iloc[-1]
+        ema50_1h = df1h["ema50"].iloc[-1]
+
+        current_rsi = df5["rsi"].iloc[-1]
+
+        previous_rsi = df5["rsi"].iloc[-2]
+
+        current_atr = df5["atr"].iloc[-1]
+
+        # ================= VALIDATION =================
+        if np.isnan(current_atr):
 
             return None
-
-
-        # ================= CURRENT DATA =================
-        price = closes[-1]
-
-        volume_now = volumes[-1]
-
-        avg_volume = (
-            sum(volumes[-20:])
-            / 20
-        )
 
         atr_percent = (
-            atr / price
+            current_atr / close
         ) * 100
 
-
-        # ================= FILTER DEAD MARKET =================
-        if atr_percent < 0.25:
+        # ================= ATR FILTER =================
+        if atr_percent < 0.20:
 
             logger.info(
-                f"⏭️ LOW VOLATILITY SKIP: {symbol}"
+                "⚠️ LOW VOLATILITY"
             )
 
             return None
 
+        # ================= TREND FILTER =================
+        bullish_1h = (
+            ema20_1h > ema50_1h
+        )
 
-        # ================= TREND =================
-        bullish_trend = ema20 > ema50
-        bearish_trend = ema20 < ema50
+        bearish_1h = (
+            ema20_1h < ema50_1h
+        )
 
+        bullish_15m = (
+            ema20_15m > ema50_15m
+        )
 
-        # ================= MOMENTUM =================
-        bullish_momentum = rsi >= 55
-        bearish_momentum = rsi <= 45
+        bearish_15m = (
+            ema20_15m < ema50_15m
+        )
 
+        bullish_5m = (
+            ema20_5m > ema50_5m
+        )
 
-        # ================= VOLUME =================
-        strong_volume = volume_now > avg_volume
+        bearish_5m = (
+            ema20_5m < ema50_5m
+        )
 
+        # ================= TREND STRENGTH =================
+        ema_distance = abs(
+            ema20_5m - ema50_5m
+        ) / close * 100
 
-        # ================= SCORE ENGINE =================
-        buy_score = 0
-        sell_score = 0
-
-
-        # ================= EMA =================
-        if bullish_trend:
-            buy_score += 25
-
-        if bearish_trend:
-            sell_score += 25
-
-
-        # ================= RSI =================
-        if bullish_momentum:
-            buy_score += 25
-
-        if bearish_momentum:
-            sell_score += 25
-
-
-        # ================= MARKET REGIME =================
-        if market_regime == "BULL":
-            buy_score += 20
-            sell_score -= 10
-
-        elif market_regime == "BEAR":
-            sell_score += 20
-            buy_score -= 10
-
-
-        # ================= ATR =================
-        if atr_percent >= 0.5:
-            buy_score += 10
-            sell_score += 10
-
-
-        # ================= VOLUME =================
-        if strong_volume:
-            buy_score += 15
-            sell_score += 15
-
-
-        # ================= DETERMINE DIRECTION =================
-        direction = None
-        confidence = 0
-
-
-        if buy_score > sell_score:
-
-            direction = "BUY"
-            confidence = buy_score
-
-        elif sell_score > buy_score:
-
-            direction = "SELL"
-            confidence = sell_score
-
-        else:
+        if ema_distance < 0.10:
 
             logger.info(
-                f"⚖️ NO CLEAR DIRECTION: {symbol}"
+                "⚠️ WEAK TREND"
             )
 
             return None
 
+        # ================= CANDLE MOMENTUM =================
+        current_body = abs(
+            df5["close"].iloc[-1] -
+            df5["open"].iloc[-1]
+        )
 
-        # ================= MINIMUM CONFIDENCE =================
-        if confidence < 30:
+        previous_body = abs(
+            df5["close"].iloc[-2] -
+            df5["open"].iloc[-2]
+        )
 
-            logger.info(
-                f"❌ LOW CONFIDENCE: "
-                f"{symbol} {confidence}%"
-            )
+        momentum_confirmed = (
+            current_body > previous_body
+        )
+
+        if not momentum_confirmed:
 
             return None
 
+        # ================= BUY SIGNAL =================
+        if (
 
-        # ================= ENTRY =================
-        entry = price
+            bullish_1h
+            and bullish_15m
+            and bullish_5m
 
+            and current_rsi > 45
+            and current_rsi > previous_rsi
 
-        # ================= TP / SL =================
-        if direction == "BUY":
+        ):
 
-            take_profit = (
-                entry + (atr * 1.5)
-            )
+            entry = close
 
             stop_loss = (
-                entry - atr
+                entry - (current_atr * 1.2)
             )
-
-        else:
 
             take_profit = (
-                entry - (atr * 1.5)
+                entry + (current_atr * 2.0)
             )
+
+            rr = (
+                (take_profit - entry) /
+                (entry - stop_loss)
+            )
+
+            confidence = min(
+
+                90,
+
+                int(
+                    55
+                    + ema_distance * 100
+                    + atr_percent * 10
+                )
+
+            )
+
+            return {
+
+                "direction": "BUY",
+
+                "entry": round(entry, 6),
+
+                "take_profit": round(
+                    take_profit,
+                    6
+                ),
+
+                "stop_loss": round(
+                    stop_loss,
+                    6
+                ),
+
+                "rsi": round(
+                    current_rsi,
+                    2
+                ),
+
+                "atr": round(
+                    current_atr,
+                    6
+                ),
+
+                "rr": round(
+                    rr,
+                    2
+                ),
+
+                "confidence": confidence,
+
+                "market_regime": "BULL"
+
+            }
+
+        # ================= SELL SIGNAL =================
+        if (
+
+            bearish_1h
+            and bearish_15m
+            and bearish_5m
+
+            and current_rsi < 55
+            and current_rsi < previous_rsi
+
+        ):
+
+            entry = close
 
             stop_loss = (
-                entry + atr
+                entry + (current_atr * 1.2)
             )
 
+            take_profit = (
+                entry - (current_atr * 2.0)
+            )
 
-        # ================= RISK REWARD =================
-        risk = abs(
-            entry - stop_loss
-        )
+            rr = (
+                (entry - take_profit) /
+                (stop_loss - entry)
+            )
 
-        reward = abs(
-            take_profit - entry
-        )
+            confidence = min(
 
-        rr = round(
-            reward / risk,
-            2
-        )
+                90,
 
+                int(
+                    55
+                    + ema_distance * 100
+                    + atr_percent * 10
+                )
 
-        # ================= FINAL SIGNAL =================
-        signal = {
+            )
 
-            "symbol": symbol,
+            return {
 
-            "direction": direction,
+                "direction": "SELL",
 
-            "entry": round(entry, 6),
+                "entry": round(entry, 6),
 
-            "take_profit": round(
-                take_profit,
-                6
-            ),
+                "take_profit": round(
+                    take_profit,
+                    6
+                ),
 
-            "stop_loss": round(
-                stop_loss,
-                6
-            ),
+                "stop_loss": round(
+                    stop_loss,
+                    6
+                ),
 
-            "confidence": max(
-                30,
-                min(confidence, 85)
-            ),
+                "rsi": round(
+                    current_rsi,
+                    2
+                ),
 
-            "rsi": round(rsi, 2),
+                "atr": round(
+                    current_atr,
+                    6
+                ),
 
-            "atr": round(atr, 6),
+                "rr": round(
+                    rr,
+                    2
+                ),
 
-            "atr_percent": round(
-                atr_percent,
-                2
-            ),
+                "confidence": confidence,
 
-            "ema20": round(
-                ema20,
-                6
-            ),
+                "market_regime": "BEAR"
 
-            "ema50": round(
-                ema50,
-                6
-            ),
+            }
 
-            "rr": rr,
-
-            "market_regime": market_regime
-
-        }
-
-
-        logger.info(
-            f"✅ SIGNAL GENERATED: "
-            f"{symbol} "
-            f"{direction} "
-            f"{confidence}%"
-        )
-
-        return signal
-
+        return None
 
     except Exception as e:
 
         logger.error(
-            f"❌ STRATEGY ERROR: "
-            f"{symbol} {e}"
+            f"❌ STRATEGY ERROR: {e}"
         )
 
         return None
