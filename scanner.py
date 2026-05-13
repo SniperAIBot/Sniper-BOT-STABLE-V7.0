@@ -1,13 +1,15 @@
 import requests
 
+from strategy import analyze
+
 from logger import logger
 
 
-# ================= BINANCE API =================
-BASE_URL = "https://data-api.binance.vision"
+BASE_URL = (
+    "https://data-api.binance.vision"
+)
 
 
-# ================= SYMBOLS =================
 SYMBOLS = [
 
     "BTCUSDT",
@@ -27,7 +29,6 @@ SYMBOLS = [
     "ICPUSDT",
     "INJUSDT",
     "APTUSDT",
-    "CHIPUSDT",
     "TAOUSDT",
     "XLMUSDT",
     "FETUSDT",
@@ -39,25 +40,33 @@ SYMBOLS = [
 ]
 
 
-# ================= SAFE REQUEST =================
-def safe_request(
-    endpoint,
-    params=None
+# ================= GET KLINES =================
+def get_klines(
+    symbol,
+    interval,
+    limit=200
 ):
 
     try:
 
-        response = requests.get(
-
-            f"{BASE_URL}{endpoint}",
-
-            params=params,
-
-            timeout=10
-
+        url = (
+            f"{BASE_URL}/api/v3/klines"
         )
 
-        # STATUS CHECK
+        params = {
+
+            "symbol": symbol,
+            "interval": interval,
+            "limit": limit
+
+        }
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=10
+        )
+
         if response.status_code != 200:
 
             logger.error(
@@ -67,60 +76,19 @@ def safe_request(
 
             return None
 
-        return response.json()
-
-    except Exception as e:
-
-        logger.error(
-            f"❌ REQUEST ERROR: {e}"
-        )
-
-        return None
-
-
-# ================= GET KLINES =================
-def get_klines(
-    symbol,
-    interval="15m",
-    limit=100
-):
-
-    try:
-
-        data = safe_request(
-
-            "/api/v3/klines",
-
-            {
-
-                "symbol": symbol,
-
-                "interval": interval,
-
-                "limit": limit
-
-            }
-
-        )
-
-        if data is None:
-            return []
+        data = response.json()
 
         candles = []
 
-        for k in data:
+        for candle in data:
 
             candles.append({
 
-                "open": float(k[1]),
-
-                "high": float(k[2]),
-
-                "low": float(k[3]),
-
-                "close": float(k[4]),
-
-                "volume": float(k[5])
+                "open": float(candle[1]),
+                "high": float(candle[2]),
+                "low": float(candle[3]),
+                "close": float(candle[4]),
+                "volume": float(candle[5])
 
             })
 
@@ -133,65 +101,69 @@ def get_klines(
             f"{symbol} {e}"
         )
 
-        return []
+        return None
 
 
-# ================= BTC REGIME =================
-def btc_regime():
+# ================= SCAN MARKET =================
+def scan_market():
 
-    try:
+    signals = []
 
-        candles = get_klines(
-            "BTCUSDT",
-            "1h",
-            50
-        )
+    for symbol in SYMBOLS:
 
-        if len(candles) < 50:
+        try:
 
-            return "NEUTRAL"
+            candles_5m = get_klines(
+                symbol,
+                "5m"
+            )
 
-        closes = [
+            candles_15m = get_klines(
+                symbol,
+                "15m"
+            )
 
-            c["close"]
+            candles_1h = get_klines(
+                symbol,
+                "1h"
+            )
 
-            for c in candles
+            if (
+                not candles_5m
+                or not candles_15m
+                or not candles_1h
+            ):
 
-        ]
+                logger.warning(
+                    f"⚠️ NO DATA: {symbol}"
+                )
 
-        current = closes[-1]
+                continue
 
-        old = closes[0]
+            signal = analyze(
 
-        change = (
-            (current - old)
-            / old
-        ) * 100
+                candles_5m,
+                candles_15m,
+                candles_1h
 
-        logger.info(
-            f"📊 BTC CHANGE: "
-            f"{round(change, 2)}%"
-        )
+            )
 
-        # ================= BULL =================
-        if change >= 2:
+            if signal:
 
-            return "BULL"
+                signal["symbol"] = symbol
 
-        # ================= BEAR =================
-        elif change <= -2:
+                signals.append(signal)
 
-            return "BEAR"
+                logger.info(
+                    f"✅ SIGNAL: "
+                    f"{symbol}"
+                )
 
-        # ================= SIDEWAYS =================
-        else:
+        except Exception as e:
 
-            return "NEUTRAL"
+            logger.error(
+                f"❌ SCAN ERROR: "
+                f"{symbol} {e}"
+            )
 
-    except Exception as e:
-
-        logger.error(
-            f"❌ BTC REGIME ERROR: {e}"
-        )
-
-        return "NEUTRAL"
+    return signals
