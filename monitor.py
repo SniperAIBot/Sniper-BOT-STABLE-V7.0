@@ -8,7 +8,7 @@ from database import (
 from logger import logger
 
 
-# ================= MONITOR SIGNALS =================
+# ================= MONITOR =================
 def monitor_signals():
 
     try:
@@ -34,21 +34,39 @@ def monitor_signals():
 
             try:
 
-                symbol = signal["symbol"]
+                # ================= SAFE FIELD ACCESS =================
+                signal_id = signal.get("id")
 
-                direction = signal["direction"]
+                symbol = signal.get("symbol")
 
-                tp = float(
-                    signal["take_profit"]
-                )
+                direction = signal.get("direction")
 
-                sl = float(
-                    signal["stop_loss"]
-                )
+                tp = signal.get("take_profit")
 
-                signal_id = signal["id"]
+                sl = signal.get("stop_loss")
 
 
+                # ================= VALIDATION =================
+                if (
+                    not symbol
+                    or not direction
+                    or tp is None
+                    or sl is None
+                ):
+
+                    logger.warning(
+                        f"⚠️ INVALID SIGNAL ROW: "
+                        f"{signal_id}"
+                    )
+
+                    continue
+
+
+                tp = float(tp)
+                sl = float(sl)
+
+
+                # ================= GET CURRENT PRICE =================
                 candles = get_klines(
                     symbol=symbol,
                     interval="5m",
@@ -120,6 +138,13 @@ def monitor_signals():
                             f"💀 SL HIT: "
                             f"{symbol}"
                         )
+
+                else:
+
+                    logger.warning(
+                        f"⚠️ UNKNOWN DIRECTION: "
+                        f"{direction}"
+                    )
 
 
             except Exception as signal_error:
