@@ -4,7 +4,7 @@ from logger import logger
 
 
 # ================= BINANCE API =================
-BASE_URL = "https://api.binance.com"
+BASE_URL = "https://data-api.binance.vision"
 
 
 # ================= SYMBOLS =================
