@@ -277,7 +277,7 @@ def analyze(
                     6
                 ),
 
-                "rsi": round(
+                "rsi": float(round(
                     current_rsi,
                     2
                 ),
