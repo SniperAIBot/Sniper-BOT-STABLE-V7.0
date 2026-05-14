@@ -3,12 +3,7 @@ import time
 from logger import logger
 
 from scanner import (
-    SYMBOLS,
-    get_klines,
-)
-
-from strategy import (
-    analyze
+    scan_market
 )
 
 from telegram_bot import (
@@ -18,9 +13,7 @@ from telegram_bot import (
 
 from database import (
     initialize_database,
-    save_signal,
-    get_open_signals,
-    close_signal
+    save_signal
 )
 
 from performance import (
@@ -41,7 +34,6 @@ logger.info(
 # ================= INIT DATABASE =================
 initialize_database()
 
-
 logger.info(
     "✅ DATABASE INITIALIZED"
 )
@@ -57,36 +49,19 @@ while True:
         )
 
 
-        # ================= SCAN SYMBOLS =================
-        for symbol in SYMBOLS:
+        # ================= GET SIGNALS =================
+        signals = scan_market()
+
+
+        logger.info(
+            f"📊 FOUND {len(signals)} SIGNALS"
+        )
+
+
+        # ================= PROCESS SIGNALS =================
+        for signal in signals:
 
             try:
-
-                candles = get_klines(
-                    symbol=symbol,
-                    interval="15m",
-                    limit=120
-                )
-
-                if not candles:
-
-                    logger.warning(
-                        f"⚠️ NO DATA: {symbol}"
-                    )
-
-                    continue
-
-
-                # ================= GENERATE SIGNAL =================
-                signal = generate_signal(
-                    symbol=symbol,
-                    candles=candles,
-                    market_regime=market_regime
-                )
-
-                if signal is None:
-                    continue
-
 
                 # ================= TELEGRAM =================
                 send_public_signal(signal)
@@ -103,18 +78,17 @@ while True:
 
                 logger.info(
                     f"✅ SIGNAL SENT: "
-                    f"{symbol}"
+                    f"{signal['symbol']}"
                 )
 
                 time.sleep(1)
 
 
-            except Exception as symbol_error:
+            except Exception as signal_error:
 
                 logger.error(
-                    f"❌ SYMBOL ERROR: "
-                    f"{symbol} "
-                    f"{symbol_error}"
+                    f"❌ SIGNAL ERROR: "
+                    f"{signal_error}"
                 )
 
 
