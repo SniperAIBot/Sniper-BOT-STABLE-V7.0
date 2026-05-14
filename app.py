@@ -3,7 +3,12 @@ import time
 from logger import logger
 
 from scanner import (
-    scan_market
+    SYMBOLS,
+    get_klines
+)
+
+from strategy import (
+    analyze
 )
 
 from telegram_bot import (
@@ -48,22 +53,79 @@ while True:
             "🔁 SCANNING MARKET..."
         )
 
-
-        # ================= GET SIGNALS =================
-        signals = scan_market()
+        signals_found = 0
 
 
-        logger.info(
-            f"📊 FOUND {len(signals)} SIGNALS"
-        )
-
-
-        # ================= PROCESS SIGNALS =================
-        for signal in signals:
+        # ================= LOOP SYMBOLS =================
+        for symbol in SYMBOLS:
 
             try:
 
-                # ================= TELEGRAM =================
+                logger.info(
+                    f"🔍 SCANNING {symbol}"
+                )
+
+
+                # ================= GET 5M DATA =================
+                candles_5m = get_klines(
+                    symbol=symbol,
+                    interval="5m",
+                    limit=120
+                )
+
+
+                # ================= GET 15M DATA =================
+                candles_15m = get_klines(
+                    symbol=symbol,
+                    interval="15m",
+                    limit=120
+                )
+
+
+                # ================= GET 1H DATA =================
+                candles_1h = get_klines(
+                    symbol=symbol,
+                    interval="1h",
+                    limit=120
+                )
+
+
+                # ================= VALIDATION =================
+                if (
+
+                    not candles_5m
+                    or not candles_15m
+                    or not candles_1h
+
+                ):
+
+                    logger.warning(
+                        f"⚠️ NO DATA: {symbol}"
+                    )
+
+                    continue
+
+
+                # ================= ANALYZE =================
+                signal = analyze(
+
+                    symbol=symbol,
+
+                    candles_5m=candles_5m,
+
+                    candles_15m=candles_15m,
+
+                    candles_1h=candles_1h
+                )
+
+
+                # ================= NO SIGNAL =================
+                if signal is None:
+
+                    continue
+
+
+                # ================= SEND TELEGRAM =================
                 send_public_signal(signal)
 
                 send_vip_signal(
@@ -76,23 +138,36 @@ while True:
                 save_signal(signal)
 
 
+                signals_found += 1
+
+
                 logger.info(
                     f"✅ SIGNAL SENT: "
-                    f"{signal['symbol']}"
+                    f"{symbol}"
                 )
 
+
+                # ================= ANTI SPAM =================
                 time.sleep(1)
 
 
-            except Exception as signal_error:
+            except Exception as symbol_error:
 
                 logger.error(
-                    f"❌ SIGNAL ERROR: "
-                    f"{signal_error}"
+                    f"❌ SCAN ERROR: "
+                    f"{symbol} "
+                    f"{symbol_error}"
                 )
 
 
-        # ================= MONITOR OPEN SIGNALS =================
+        # ================= SIGNAL SUMMARY =================
+        logger.info(
+            f"📊 FOUND "
+            f"{signals_found} SIGNALS"
+        )
+
+
+        # ================= MONITOR SIGNALS =================
         try:
 
             monitor_signals()
