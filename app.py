@@ -8,7 +8,7 @@ from scanner import (
 )
 
 from strategy import (
-    generate_signal
+    analyze
 )
 
 from telegram_bot import (
