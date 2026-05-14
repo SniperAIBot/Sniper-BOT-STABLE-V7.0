@@ -56,13 +56,6 @@ while True:
             "🔁 SCANNING MARKET..."
         )
 
-        # ================= BTC REGIME =================
-        market_regime = btc_regime()
-
-        logger.info(
-            f"📊 BTC REGIME: "
-            f"{market_regime}"
-        )
 
         # ================= SCAN SYMBOLS =================
         for symbol in SYMBOLS:
