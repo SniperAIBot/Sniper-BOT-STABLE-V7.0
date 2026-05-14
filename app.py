@@ -5,7 +5,6 @@ from logger import logger
 from scanner import (
     SYMBOLS,
     get_klines,
-    btc_regime
 )
 
 from strategy import (
