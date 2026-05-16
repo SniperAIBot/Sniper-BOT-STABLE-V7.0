@@ -279,3 +279,147 @@ def close_signal(
         logger.error(
             f"❌ CLOSE SIGNAL ERROR: {e}"
         )
+
+import pandas as pd
+
+
+# ================= GET ALL SIGNALS =================
+def get_all_signals():
+
+    conn = get_connection()
+
+    query = """
+        SELECT *
+        FROM signals
+        ORDER BY id DESC
+    """
+
+    df = pd.read_sql(
+        query,
+        conn
+    )
+
+    conn.close()
+
+    return df
+
+
+# ================= GET RECENT SIGNALS =================
+def get_recent_signals(limit=20):
+
+    conn = get_connection()
+
+    query = f"""
+        SELECT
+            symbol,
+            direction,
+            entry,
+            take_profit,
+            stop_loss,
+            result,
+            market_regime,
+            created_at
+        FROM signals
+        ORDER BY id DESC
+        LIMIT {limit}
+    """
+
+    df = pd.read_sql(
+        query,
+        conn
+    )
+
+    conn.close()
+
+    return df
+
+
+# ================= GET STATISTICS =================
+def get_statistics():
+
+    conn = get_connection()
+
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT COUNT(*) FROM signals
+        """
+    )
+
+    total = cursor.fetchone()[0]
+
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM signals
+        WHERE result = 'WIN'
+        """
+    )
+
+    wins = cursor.fetchone()[0]
+
+
+    cursor.execute(
+        """
+        SELECT COUNT(*)
+        FROM signals
+        WHERE result = 'LOSS'
+        """
+    )
+
+    losses = cursor.fetchone()[0]
+
+
+    winrate = 0
+
+    if total > 0:
+
+        winrate = round(
+            (wins / total) * 100,
+            2
+        )
+
+
+    conn.close()
+
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "winrate": winrate
+    }
+
+
+# ================= SYMBOL PERFORMANCE =================
+def get_symbol_performance():
+
+    conn = get_connection()
+
+    query = """
+        SELECT
+            symbol,
+            COUNT(*) FILTER (
+                WHERE result = 'WIN'
+            ) AS wins,
+
+            COUNT(*) FILTER (
+                WHERE result = 'LOSS'
+            ) AS losses
+
+        FROM signals
+
+        GROUP BY symbol
+
+        ORDER BY wins DESC
+    """
+
+    df = pd.read_sql(
+        query,
+        conn
+    )
+
+    conn.close()
+
+    return df
