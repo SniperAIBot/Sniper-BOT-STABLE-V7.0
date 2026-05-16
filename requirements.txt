@@ -5,3 +5,7 @@ gunicorn
 numpy
 pandas
 dotenv
+streamlit
+plotly
+pandas
+psycopg2-binary
