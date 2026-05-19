@@ -377,9 +377,6 @@ def analyze(
                 ),
 
                 "market_regime": market_regime
-                ),
-
-                "strategy_version": v2_strict
             }
 
 
@@ -474,9 +471,6 @@ def analyze(
                 ),
 
                 "market_regime": market_regime
-                ),
-
-                "strategy_version": v2_strict
             }
 
 
