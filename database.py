@@ -112,59 +112,40 @@ def save_signal(signal):
 
         cur = conn.cursor()
 
-        cur.execute(
-
-            """
-            INSERT INTO signals (
-
-                symbol,
-                direction,
-                entry,
-                take_profit,
-                stop_loss,
-                confidence,
-                rsi,
-                atr,
-                rr,
-                market_regime,
-                status
-
-            )
-
-            VALUES (
-
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-
-            );
-            """,
-
-            (
-
-                signal["symbol"],
-                signal["direction"],
-                signal["entry"],
-                signal["take_profit"],
-                signal["stop_loss"],
-                signal["confidence"],
-                signal["rsi"],
-                signal["atr"],
-                signal["rr"],
-                signal["market_regime"],
-                "OPEN"
-
-            )
-
-        )
+        cur.ex(
+    """
+    INSERT INTO signals (
+        symbol,
+        direction,
+        entry,
+        take_profit,
+        stop_loss,
+        confidence,
+        rsi,
+        atr,
+        market_regime,
+        strategy_version,
+        status
+    )
+    VALUES (
+        %s, %s, %s, %s, %s,
+        %s, %s, %s, %s, %s, %s
+    )
+    """,
+    (
+        signal["symbol"],
+        signal["direction"],
+        signal["entry"],
+        signal["take_profit"],
+        signal["stop_loss"],
+        signal["confidence"],
+        signal["rsi"],
+        signal["atr"],
+        signal["market_regime"],
+        signal["strategy_version"],
+        "OPEN"
+    )
+)
 
         conn.commit()
 
