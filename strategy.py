@@ -1,3 +1,4 @@
+```python
 import pandas as pd
 import numpy as np
 
@@ -78,11 +79,8 @@ def analyze(
 
         # ================= DATAFRAMES =================
         df5 = pd.DataFrame(candles_5m)
-
         df15 = pd.DataFrame(candles_15m)
-
         df1h = pd.DataFrame(candles_1h)
-
 
         # ================= CLEAN DATA =================
         for df in [df5, df15, df1h]:
@@ -97,7 +95,6 @@ def analyze(
 
                 df[col] = df[col].astype(float)
 
-
         # ================= EMAS =================
         for df in [df5, df15, df1h]:
 
@@ -111,16 +108,13 @@ def analyze(
                 50
             )
 
-
         # ================= RSI =================
         df5["rsi"] = rsi(
             df5["close"]
         )
 
-
         # ================= ATR =================
         df5["atr"] = atr(df5)
-
 
         # ================= VOLUME =================
         df5["volume_ma"] = (
@@ -128,7 +122,6 @@ def analyze(
             .rolling(20)
             .mean()
         )
-
 
         # ================= CURRENT VALUES =================
         close = float(
@@ -155,19 +148,17 @@ def analyze(
             df5["volume_ma"].iloc[-1]
         )
 
-
         # ================= VALIDATION =================
         if np.isnan(current_atr):
 
             return None
-
 
         # ================= ATR FILTER =================
         atr_percent = (
             current_atr / close
         ) * 100
 
-        if atr_percent < 0.25:
+        if atr_percent < 0.35:
 
             logger.info(
                 "⚠️ LOW VOLATILITY"
@@ -175,10 +166,9 @@ def analyze(
 
             return None
 
-
         # ================= VOLUME FILTER =================
         if current_volume < (
-            average_volume * 1.2
+            average_volume * 1.5
         ):
 
             logger.info(
@@ -186,7 +176,6 @@ def analyze(
             )
 
             return None
-
 
         # ================= TREND FILTER =================
         bullish_1h = (
@@ -219,14 +208,13 @@ def analyze(
             df5["ema50"].iloc[-1]
         )
 
-
         # ================= TREND STRENGTH =================
         ema_distance = abs(
             df5["ema20"].iloc[-1] -
             df5["ema50"].iloc[-1]
         ) / close * 100
 
-        if ema_distance < 0.15:
+        if ema_distance < 0.25:
 
             logger.info(
                 "⚠️ WEAK TREND"
@@ -234,15 +222,14 @@ def analyze(
 
             return None
 
-
-        # ================= EMA SLOPE =================
+        # ================= EMA MOMENTUM =================
         ema_slope = abs(
             df5["ema20"].iloc[-1] -
             df5["ema20"].iloc[-5]
         )
 
         if ema_slope < (
-            close * 0.001
+            close * 0.002
         ):
 
             logger.info(
@@ -251,19 +238,20 @@ def analyze(
 
             return None
 
-
-        # ================= CANDLE MOMENTUM =================
+        # ================= CANDLE STRENGTH =================
         current_body = abs(
             df5["close"].iloc[-1] -
             df5["open"].iloc[-1]
         )
 
-        previous_body = abs(
-            df5["close"].iloc[-2] -
-            df5["open"].iloc[-2]
+        candle_range = (
+            df5["high"].iloc[-1] -
+            df5["low"].iloc[-1]
         )
 
-        if current_body < previous_body:
+        if current_body < (
+            candle_range * 0.5
+        ):
 
             logger.info(
                 "⚠️ WEAK CANDLE"
@@ -271,29 +259,23 @@ def analyze(
 
             return None
 
-
         # ================= MARKET REGIME =================
-        if atr_percent > 1.0:
+        if atr_percent > 1.2:
 
             market_regime = "VOLATILE"
-
-        elif ema_distance < 0.12:
-
-            market_regime = "RANGING"
 
         else:
 
             market_regime = "TRENDING"
 
-
-        # ================= BUY SIGNAL =================
+        # ================= BUY =================
         if (
 
             bullish_1h
             and bullish_15m
             and bullish_5m
 
-            and 50 < current_rsi < 72
+            and 55 < current_rsi < 70
 
             and current_rsi > previous_rsi
 
@@ -303,21 +285,12 @@ def analyze(
 
             stop_loss = (
                 entry -
-                (current_atr * 1.3)
+                (current_atr * 1.5)
             )
-
-            # ================= DYNAMIC TP =================
-            if ema_distance > 0.40:
-
-                tp_multiplier = 3.0
-
-            else:
-
-                tp_multiplier = 2.0
 
             take_profit = (
                 entry +
-                (current_atr * tp_multiplier)
+                (current_atr * 3.5)
             )
 
             rr = (
@@ -330,17 +303,15 @@ def analyze(
                 95,
 
                 int(
-                    60
+                    65
                     + (ema_distance * 100)
-                    + (atr_percent * 12)
+                    + (atr_percent * 10)
                 )
             )
 
-            # ================= CONFIDENCE FILTER =================
-            if confidence < 75:
+            if confidence < 80:
 
                 return None
-
 
             return {
 
@@ -348,46 +319,48 @@ def analyze(
 
                 "direction": "BUY",
 
-                "entry": float(
-                    round(entry, 6)
+                "entry": round(entry, 6),
+
+                "take_profit": round(
+                    take_profit,
+                    6
                 ),
 
-                "take_profit": float(
-                    round(take_profit, 6)
+                "stop_loss": round(
+                    stop_loss,
+                    6
                 ),
 
-                "stop_loss": float(
-                    round(stop_loss, 6)
+                "rsi": round(
+                    current_rsi,
+                    2
                 ),
 
-                "rsi": float(
-                    round(current_rsi, 2)
+                "atr": round(
+                    current_atr,
+                    6
                 ),
 
-                "atr": float(
-                    round(current_atr, 6)
+                "rr": round(
+                    rr,
+                    2
                 ),
 
-                "rr": float(
-                    round(rr, 2)
-                ),
+                "confidence": confidence,
 
-                "confidence": int(
-                    confidence
-                ),
+                "market_regime": market_regime,
 
-                "market_regime": market_regime
+                "strategy_version": "v3_precision"
             }
 
-
-        # ================= SELL SIGNAL =================
+        # ================= SELL =================
         if (
 
             bearish_1h
             and bearish_15m
             and bearish_5m
 
-            and 28 < current_rsi < 50
+            and 30 < current_rsi < 45
 
             and current_rsi < previous_rsi
 
@@ -397,21 +370,12 @@ def analyze(
 
             stop_loss = (
                 entry +
-                (current_atr * 1.3)
+                (current_atr * 1.5)
             )
-
-            # ================= DYNAMIC TP =================
-            if ema_distance > 0.40:
-
-                tp_multiplier = 3.0
-
-            else:
-
-                tp_multiplier = 2.0
 
             take_profit = (
                 entry -
-                (current_atr * tp_multiplier)
+                (current_atr * 3.5)
             )
 
             rr = (
@@ -424,17 +388,15 @@ def analyze(
                 95,
 
                 int(
-                    60
+                    65
                     + (ema_distance * 100)
-                    + (atr_percent * 12)
+                    + (atr_percent * 10)
                 )
             )
 
-            # ================= CONFIDENCE FILTER =================
-            if confidence < 75:
+            if confidence < 80:
 
                 return None
-
 
             return {
 
@@ -442,40 +404,41 @@ def analyze(
 
                 "direction": "SELL",
 
-                "entry": float(
-                    round(entry, 6)
+                "entry": round(entry, 6),
+
+                "take_profit": round(
+                    take_profit,
+                    6
                 ),
 
-                "take_profit": float(
-                    round(take_profit, 6)
+                "stop_loss": round(
+                    stop_loss,
+                    6
                 ),
 
-                "stop_loss": float(
-                    round(stop_loss, 6)
+                "rsi": round(
+                    current_rsi,
+                    2
                 ),
 
-                "rsi": float(
-                    round(current_rsi, 2)
+                "atr": round(
+                    current_atr,
+                    6
                 ),
 
-                "atr": float(
-                    round(current_atr, 6)
+                "rr": round(
+                    rr,
+                    2
                 ),
 
-                "rr": float(
-                    round(rr, 2)
-                ),
+                "confidence": confidence,
 
-                "confidence": int(
-                    confidence
-                ),
+                "market_regime": market_regime,
 
-                "market_regime": market_regime
+                "strategy_version": "v3_precision"
             }
 
-
         return None
-
 
     except Exception as e:
 
@@ -484,3 +447,4 @@ def analyze(
         )
 
         return None
+```
