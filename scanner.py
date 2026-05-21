@@ -24,7 +24,6 @@ SYMBOLS = [
     "LTCUSDT",
     "DOTUSDT",
     "UNIUSDT",
-    "APEUSDT",
     "AAVEUSDT",
     "ICPUSDT",
     "INJUSDT",
@@ -34,7 +33,6 @@ SYMBOLS = [
     "FETUSDT",
     "FILUSDT",
     "ZECUSDT",
-    "CHZUSDT",
     "SEIUSDT"
 
 ]
