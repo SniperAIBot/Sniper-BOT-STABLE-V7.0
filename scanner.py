@@ -20,6 +20,7 @@ SYMBOLS = [
     "XMRUSDT",
     "ALGOUSDT",
     "CAKEUSDT",
+    "GNOUSDT",
     "ATOMUSDT",
     "ADAUSDT",
     "LINKUSDT",
