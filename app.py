@@ -3,12 +3,7 @@ import time
 from logger import logger
 
 from scanner import (
-    SYMBOLS,
-    get_klines
-)
-
-from strategy import (
-    analyze
+    scan_market
 )
 
 from telegram_bot import (
@@ -30,18 +25,27 @@ from monitor import (
 )
 
 
-# ================= START ENGINE =================
+# ================= ENGINE START =================
 logger.info(
-    "🚀 STARTING SNIPER PRO ENGINE"
+    "🚀 STARTING SNIPER PRO ENGINE v4"
 )
 
 
 # ================= INIT DATABASE =================
-initialize_database()
+try:
 
-logger.info(
-    "✅ DATABASE INITIALIZED"
-)
+    initialize_database()
+
+    logger.info(
+        "✅ DATABASE INITIALIZED"
+    )
+
+except Exception as db_error:
+
+    logger.error(
+        f"❌ DATABASE INIT ERROR: "
+        f"{db_error}"
+    )
 
 
 # ================= MAIN LOOP =================
@@ -50,124 +54,91 @@ while True:
     try:
 
         logger.info(
-            "🔁 SCANNING MARKET..."
+            "🔁 STARTING MARKET CYCLE"
         )
 
-        signals_found = 0
+        # =====================================================
+        # ================= SCAN MARKET =======================
+        # =====================================================
+        try:
+
+            signals = scan_market()
+
+        except Exception as scan_error:
+
+            logger.error(
+                f"❌ MARKET SCAN ERROR: "
+                f"{scan_error}"
+            )
+
+            signals = []
 
 
-        # ================= LOOP SYMBOLS =================
-        for symbol in SYMBOLS:
+        # =====================================================
+        # ================= PROCESS SIGNALS ===================
+        # =====================================================
+        signals_sent = 0
+
+        for signal in signals:
 
             try:
 
+                symbol = signal.get(
+                    "symbol",
+                    "UNKNOWN"
+                )
+
                 logger.info(
-                    f"🔍 SCANNING {symbol}"
+                    f"📨 PROCESSING SIGNAL: "
+                    f"{symbol}"
                 )
 
-
-                # ================= GET 5M DATA =================
-                candles_5m = get_klines(
-                    symbol=symbol,
-                    interval="5m",
-                    limit=120
-                )
-
-
-                # ================= GET 15M DATA =================
-                candles_15m = get_klines(
-                    symbol=symbol,
-                    interval="15m",
-                    limit=120
-                )
-
-
-                # ================= GET 1H DATA =================
-                candles_1h = get_klines(
-                    symbol=symbol,
-                    interval="1h",
-                    limit=120
-                )
-
-
-                # ================= VALIDATION =================
-                if (
-
-                    not candles_5m
-                    or not candles_15m
-                    or not candles_1h
-
-                ):
-
-                    logger.warning(
-                        f"⚠️ NO DATA: {symbol}"
-                    )
-
-                    continue
-
-
-                # ================= ANALYZE =================
-                signal = analyze(
-
-                    symbol=symbol,
-
-                    candles_5m=candles_5m,
-
-                    candles_15m=candles_15m,
-
-                    candles_1h=candles_1h
-                )
-
-
-                # ================= NO SIGNAL =================
-                if signal is None:
-
-                    continue
-
-
-                # ================= SEND TELEGRAM =================
+                # ================= SEND PUBLIC =================
                 send_public_signal(signal)
 
+                # ================= SEND VIP =================
                 send_vip_signal(
-                    signal,
-                    get_win_rate()
-                )
 
+                    signal,
+
+                    get_win_rate()
+
+                )
 
                 # ================= SAVE DATABASE =================
                 save_signal(signal)
 
-
-                signals_found += 1
-
+                signals_sent += 1
 
                 logger.info(
-                    f"✅ SIGNAL SENT: "
+                    f"✅ SIGNAL DEPLOYED: "
                     f"{symbol}"
                 )
 
-
-                # ================= ANTI SPAM =================
+                # ================= ANTI-SPAM =================
                 time.sleep(1)
 
-
-            except Exception as symbol_error:
+            except Exception as signal_error:
 
                 logger.error(
-                    f"❌ SCAN ERROR: "
-                    f"{symbol} "
-                    f"{symbol_error}"
+                    f"❌ SIGNAL PROCESS ERROR: "
+                    f"{signal_error}"
                 )
 
 
-        # ================= SIGNAL SUMMARY =================
+        # =====================================================
+        # ================= SUMMARY ===========================
+        # =====================================================
         logger.info(
-            f"📊 FOUND "
-            f"{signals_found} SIGNALS"
+            f"📊 CYCLE COMPLETE | "
+            f"SIGNALS SENT: "
+            f"{signals_sent}"
         )
 
 
-        # ================= MONITOR SIGNALS =================
+        # =====================================================
+        # ================= MONITOR SIGNALS ===================
+        # =====================================================
         try:
 
             monitor_signals()
@@ -180,7 +151,9 @@ while True:
             )
 
 
-        # ================= LOOP DELAY =================
+        # =====================================================
+        # ================= SLEEP =============================
+        # =====================================================
         logger.info(
             "⏳ Sleeping 300 seconds..."
         )
