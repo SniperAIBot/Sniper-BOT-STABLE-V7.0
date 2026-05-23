@@ -1,3 +1,5 @@
+import time
+
 from scanner import get_klines
 
 from database import (
@@ -6,6 +8,12 @@ from database import (
 )
 
 from logger import logger
+
+
+# ================= CONFIG =================
+MAX_TRADE_DURATION = 14400
+
+BREAKEVEN_TRIGGER = 0.75
 
 
 # ================= MONITOR =================
@@ -23,50 +31,44 @@ def monitor_signals():
 
             return
 
-
         logger.info(
             f"👀 MONITORING "
             f"{len(signals)} SIGNALS"
         )
 
-
         for signal in signals:
 
             try:
 
-                # ================= SAFE FIELD ACCESS =================
                 signal_id = signal.get("id")
 
                 symbol = signal.get("symbol")
 
                 direction = signal.get("direction")
 
-                tp = signal.get("take_profit")
+                entry = float(
+                    signal.get("entry")
+                )
 
-                sl = signal.get("stop_loss")
+                tp = float(
+                    signal.get("take_profit")
+                )
 
+                sl = float(
+                    signal.get("stop_loss")
+                )
 
-                # ================= VALIDATION =================
+                created_at = signal.get(
+                    "created_at"
+                )
+
                 if (
                     not symbol
                     or not direction
-                    or tp is None
-                    or sl is None
                 ):
-
-                    logger.warning(
-                        f"⚠️ INVALID SIGNAL ROW: "
-                        f"{signal_id}"
-                    )
 
                     continue
 
-
-                tp = float(tp)
-                sl = float(sl)
-
-
-                # ================= GET CURRENT PRICE =================
                 candles = get_klines(
                     symbol=symbol,
                     interval="5m",
@@ -74,11 +76,67 @@ def monitor_signals():
                 )
 
                 if not candles:
-                    continue
 
+                    continue
 
                 current_price = candles[-1]["close"]
 
+                # ================= RISK =================
+                if direction == "BUY":
+
+                    risk = (
+                        entry - sl
+                    )
+
+                    current_profit = (
+                        current_price - entry
+                    )
+
+                else:
+
+                    risk = (
+                        sl - entry
+                    )
+
+                    current_profit = (
+                        entry - current_price
+                    )
+
+                if risk <= 0:
+
+                    continue
+
+                rr_progress = (
+                    current_profit / risk
+                )
+
+                # ================= TIMEOUT EXIT =================
+                if created_at:
+
+                    try:
+
+                        trade_age = (
+                            time.time() -
+                            created_at.timestamp()
+                        )
+
+                        if trade_age > MAX_TRADE_DURATION:
+
+                            close_signal(
+                                signal_id,
+                                "TIMEOUT"
+                            )
+
+                            logger.info(
+                                f"⌛ TIMEOUT EXIT: "
+                                f"{symbol}"
+                            )
+
+                            continue
+
+                    except:
+
+                        pass
 
                 # ================= BUY =================
                 if direction == "BUY":
@@ -96,8 +154,29 @@ def monitor_signals():
                             f"{symbol}"
                         )
 
+                        continue
+
+                    # BREAKEVEN EXIT
+                    if (
+                        rr_progress >=
+                        BREAKEVEN_TRIGGER
+                        and current_price <= entry
+                    ):
+
+                        close_signal(
+                            signal_id,
+                            "BREAKEVEN"
+                        )
+
+                        logger.info(
+                            f"⚖️ BREAKEVEN: "
+                            f"{symbol}"
+                        )
+
+                        continue
+
                     # STOP LOSS
-                    elif current_price <= sl:
+                    if current_price <= sl:
 
                         close_signal(
                             signal_id,
@@ -109,6 +188,7 @@ def monitor_signals():
                             f"{symbol}"
                         )
 
+                        continue
 
                 # ================= SELL =================
                 elif direction == "SELL":
@@ -126,8 +206,29 @@ def monitor_signals():
                             f"{symbol}"
                         )
 
+                        continue
+
+                    # BREAKEVEN EXIT
+                    if (
+                        rr_progress >=
+                        BREAKEVEN_TRIGGER
+                        and current_price >= entry
+                    ):
+
+                        close_signal(
+                            signal_id,
+                            "BREAKEVEN"
+                        )
+
+                        logger.info(
+                            f"⚖️ BREAKEVEN: "
+                            f"{symbol}"
+                        )
+
+                        continue
+
                     # STOP LOSS
-                    elif current_price >= sl:
+                    if current_price >= sl:
 
                         close_signal(
                             signal_id,
@@ -139,13 +240,7 @@ def monitor_signals():
                             f"{symbol}"
                         )
 
-                else:
-
-                    logger.warning(
-                        f"⚠️ UNKNOWN DIRECTION: "
-                        f"{direction}"
-                    )
-
+                        continue
 
             except Exception as signal_error:
 
@@ -153,7 +248,6 @@ def monitor_signals():
                     f"❌ MONITOR SIGNAL ERROR: "
                     f"{signal_error}"
                 )
-
 
     except Exception as e:
 
