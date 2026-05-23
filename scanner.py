@@ -1,4 +1,3 @@
-```python
 import requests
 import time
 import pandas as pd
@@ -333,4 +332,3 @@ def scan_market():
     )
 
     return signals
-```
