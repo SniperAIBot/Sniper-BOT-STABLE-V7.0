@@ -1,15 +1,15 @@
+```python
 import requests
+import time
+import pandas as pd
 
 from strategy import analyze
-
 from logger import logger
 
+# ================= CONFIG =================
+BASE_URL = "https://data-api.binance.vision"
 
-BASE_URL = (
-    "https://data-api.binance.vision"
-)
-
-
+# ================= ELITE SYMBOLS ONLY =================
 SYMBOLS = [
 
     "BTCUSDT",
@@ -17,34 +17,57 @@ SYMBOLS = [
     "BNBUSDT",
     "SOLUSDT",
     "XRPUSDT",
-    "XMRUSDT",
-    "ALGOUSDT",
-    "CAKEUSDT",
-    "GNOUSDT",
-    "ATOMUSDT",
+    "DOGEUSDT",
     "ADAUSDT",
     "LINKUSDT",
     "AVAXUSDT",
-    "LTCUSDT",
-    "DOTUSDT",
-    "UNIUSDT",
     "AAVEUSDT",
-    "ICPUSDT",
     "INJUSDT",
+    "ATOMUSDT",
     "APTUSDT",
-    "TAOUSDT",
-    "XLMUSDT",
-    "FETUSDT",
-    "GALAUSDT",
-    "ENJUSDT",
-    "STXUSDT",
-    "KNCUSDT",
-    "TKOUSDT",
     "FILUSDT",
-    "ZECUSDT",
     "SEIUSDT"
 
 ]
+
+# ================= COOLDOWN =================
+LAST_SIGNAL_TIME = {}
+
+COOLDOWN_SECONDS = 7200
+
+# ================= CORRELATION GROUPS =================
+CORRELATION_GROUPS = {
+
+    "BTC": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "BNBUSDT"
+    ],
+
+    "ALT": [
+        "AVAXUSDT",
+        "ADAUSDT",
+        "ATOMUSDT",
+        "APTUSDT",
+        "SEIUSDT",
+        "FILUSDT"
+    ]
+}
+
+MAX_SIGNALS_PER_GROUP = 1
+
+
+# ================= GET GROUP =================
+def get_group(symbol):
+
+    for group, symbols in CORRELATION_GROUPS.items():
+
+        if symbol in symbols:
+
+            return group
+
+    return None
 
 
 # ================= GET KLINES =================
@@ -111,15 +134,90 @@ def get_klines(
         return None
 
 
+# ================= LIQUIDITY FILTER =================
+def passes_liquidity_filter(candles):
+
+    try:
+
+        df = pd.DataFrame(candles)
+
+        avg_volume = (
+            df["volume"]
+            .astype(float)
+            .tail(20)
+            .mean()
+        )
+
+        return avg_volume > 100000
+
+    except:
+
+        return False
+
+
+# ================= MOMENTUM FILTER =================
+def passes_momentum_filter(candles):
+
+    try:
+
+        df = pd.DataFrame(candles)
+
+        close_now = float(
+            df["close"].iloc[-1]
+        )
+
+        close_before = float(
+            df["close"].iloc[-12]
+        )
+
+        move_percent = abs(
+            (
+                close_now -
+                close_before
+            ) / close_before
+        ) * 100
+
+        return move_percent > 1.0
+
+    except:
+
+        return False
+
+
 # ================= SCAN MARKET =================
 def scan_market():
 
     signals = []
 
+    active_groups = {}
+
+    logger.info(
+        "🔍 STARTING ELITE MARKET SCAN"
+    )
+
     for symbol in SYMBOLS:
 
         try:
 
+            # ================= COOLDOWN =================
+            last_signal = LAST_SIGNAL_TIME.get(symbol)
+
+            if last_signal:
+
+                elapsed = (
+                    time.time() -
+                    last_signal
+                )
+
+                if elapsed < COOLDOWN_SECONDS:
+
+                    logger.info(
+                        f"⏳ COOLDOWN: {symbol}"
+                    )
+
+                    continue
+
+            # ================= GET DATA =================
             candles_5m = get_klines(
                 symbol,
                 "5m"
@@ -147,24 +245,80 @@ def scan_market():
 
                 continue
 
+            # ================= LIQUIDITY =================
+            if not passes_liquidity_filter(
+                candles_5m
+            ):
+
+                logger.info(
+                    f"⚠️ LOW LIQUIDITY: "
+                    f"{symbol}"
+                )
+
+                continue
+
+            # ================= MOMENTUM =================
+            if not passes_momentum_filter(
+                candles_15m
+            ):
+
+                logger.info(
+                    f"⚠️ NO MOMENTUM: "
+                    f"{symbol}"
+                )
+
+                continue
+
+            # ================= ANALYZE =================
             signal = analyze(
 
+                symbol,
                 candles_5m,
                 candles_15m,
                 candles_1h
 
             )
 
-            if signal:
+            if not signal:
 
-                signal["symbol"] = symbol
+                continue
 
-                signals.append(signal)
+            # ================= CORRELATION FILTER =================
+            group = get_group(symbol)
 
-                logger.info(
-                    f"✅ SIGNAL: "
-                    f"{symbol}"
+            if group:
+
+                active_count = active_groups.get(
+                    group,
+                    0
                 )
+
+                if active_count >= MAX_SIGNALS_PER_GROUP:
+
+                    logger.info(
+                        f"⚠️ CORRELATED SKIP: "
+                        f"{symbol}"
+                    )
+
+                    continue
+
+                active_groups[group] = (
+                    active_count + 1
+                )
+
+            # ================= SAVE COOLDOWN =================
+            LAST_SIGNAL_TIME[symbol] = time.time()
+
+            # ================= ADD SIGNAL =================
+            signals.append(signal)
+
+            logger.info(
+                f"✅ ELITE SIGNAL: "
+                f"{symbol} | "
+                f"{signal['direction']} | "
+                f"CONFIDENCE "
+                f"{signal['confidence']}"
+            )
 
         except Exception as e:
 
@@ -173,4 +327,10 @@ def scan_market():
                 f"{symbol} {e}"
             )
 
+    logger.info(
+        f"📊 FOUND "
+        f"{len(signals)} ELITE SIGNALS"
+    )
+
     return signals
+```
