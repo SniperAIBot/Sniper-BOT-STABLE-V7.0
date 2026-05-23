@@ -27,7 +27,7 @@ from monitor import (
 
 # ================= ENGINE START =================
 logger.info(
-    "🚀 STARTING SNIPER PRO ENGINE v4"
+    "🚀 STARTING SNIPER PRO ENGINE v7.0"
 )
 
 
