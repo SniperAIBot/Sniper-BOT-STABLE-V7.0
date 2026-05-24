@@ -1,5 +1,7 @@
 import os
+import pandas as pd
 import psycopg2
+
 from psycopg2.extras import RealDictCursor
 
 from logger import logger
@@ -11,16 +13,14 @@ DATABASE_URL = os.getenv(
 )
 
 
-# ================= CONNECT =================
+# ================= CONNECTION =================
 def get_connection():
 
     try:
 
-        conn = psycopg2.connect(
+        return psycopg2.connect(
             DATABASE_URL
         )
-
-        return conn
 
     except Exception as e:
 
@@ -31,7 +31,7 @@ def get_connection():
         return None
 
 
-# ================= INITIALIZE DATABASE =================
+# ================= INITIALIZE =================
 def initialize_database():
 
     conn = get_connection()
@@ -44,8 +44,8 @@ def initialize_database():
         cur = conn.cursor()
 
         cur.execute(
-
             """
+
             CREATE TABLE IF NOT EXISTS signals (
 
                 id SERIAL PRIMARY KEY,
@@ -70,17 +70,19 @@ def initialize_database():
 
                 market_regime TEXT,
 
+                strategy_version TEXT,
+
                 status TEXT DEFAULT 'OPEN',
 
-                result TEXT DEFAULT '',
+                result TEXT,
 
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 closed_at TIMESTAMP
 
             );
-            """
 
+            """
         )
 
         conn.commit()
@@ -112,40 +114,57 @@ def save_signal(signal):
 
         cur = conn.cursor()
 
-        cur.ex(
-    """
-    INSERT INTO signals (
-        symbol,
-        direction,
-        entry,
-        take_profit,
-        stop_loss,
-        confidence,
-        rsi,
-        atr,
-        market_regime,
-        strategy_version,
-        status
-    )
-    VALUES (
-        %s, %s, %s, %s, %s,
-        %s, %s, %s, %s, %s, %s
-    )
-    """,
-    (
-        signal["symbol"],
-        signal["direction"],
-        signal["entry"],
-        signal["take_profit"],
-        signal["stop_loss"],
-        signal["confidence"],
-        signal["rsi"],
-        signal["atr"],
-        signal["market_regime"],
-        signal["strategy_version"],
-        "OPEN"
-    )
-)
+        cur.execute(
+            """
+
+            INSERT INTO signals (
+
+                symbol,
+                direction,
+                entry,
+                take_profit,
+                stop_loss,
+                confidence,
+                rsi,
+                atr,
+                rr,
+                market_regime,
+                strategy_version,
+                status
+
+            )
+
+            VALUES (
+
+                %s, %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s
+
+            )
+
+            """,
+
+            (
+
+                signal["symbol"],
+                signal["direction"],
+                signal["entry"],
+                signal["take_profit"],
+                signal["stop_loss"],
+                signal["confidence"],
+                signal["rsi"],
+                signal["atr"],
+                signal["rr"],
+                signal["market_regime"],
+                signal.get(
+                    "strategy_version",
+                    "unknown"
+                ),
+                "OPEN"
+
+            )
+
+        )
 
         conn.commit()
 
@@ -165,7 +184,7 @@ def save_signal(signal):
         )
 
 
-# ================= GET OPEN SIGNALS =================
+# ================= OPEN SIGNALS =================
 def get_open_signals():
 
     conn = get_connection()
@@ -180,13 +199,15 @@ def get_open_signals():
         )
 
         cur.execute(
-
             """
+
             SELECT *
-            FROM signals
-            WHERE status = 'OPEN';
-            """
 
+            FROM signals
+
+            WHERE status='OPEN'
+
+            """
         )
 
         signals = cur.fetchall()
@@ -222,26 +243,24 @@ def close_signal(
         cur = conn.cursor()
 
         cur.execute(
-
             """
+
             UPDATE signals
 
             SET
 
-                status = 'CLOSED',
-                result = %s,
-                closed_at = CURRENT_TIMESTAMP
+                status='CLOSED',
+                result=%s,
+                closed_at=CURRENT_TIMESTAMP
 
-            WHERE id = %s;
+            WHERE id=%s
+
             """,
 
             (
-
                 result,
                 signal_id
-
             )
-
         )
 
         conn.commit()
@@ -261,132 +280,120 @@ def close_signal(
             f"❌ CLOSE SIGNAL ERROR: {e}"
         )
 
-import pandas as pd
 
-
-# ================= GET ALL SIGNALS =================
+# ================= ALL SIGNALS =================
 def get_all_signals():
 
     conn = get_connection()
 
-    query = """
+    if conn is None:
+        return pd.DataFrame()
+
+    try:
+
+        query = """
+
         SELECT *
+
         FROM signals
+
         ORDER BY id DESC
-    """
 
-    df = pd.read_sql(
-        query,
-        conn
-    )
+        """
 
-    conn.close()
+        df = pd.read_sql(
+            query,
+            conn
+        )
 
-    return df
+        conn.close()
+
+        return df
+
+    except Exception as e:
+
+        logger.error(
+            f"❌ ALL SIGNALS ERROR: {e}"
+        )
+
+        return pd.DataFrame()
 
 
-# ================= GET RECENT SIGNALS =================
+# ================= RECENT SIGNALS =================
 def get_recent_signals(limit=20):
 
     conn = get_connection()
 
-    query = f"""
+    if conn is None:
+        return pd.DataFrame()
+
+    try:
+
+        query = f"""
+
         SELECT
+
             symbol,
             direction,
             entry,
             take_profit,
             stop_loss,
+            confidence,
             result,
             market_regime,
+            strategy_version,
             created_at
+
         FROM signals
+
         ORDER BY id DESC
+
         LIMIT {limit}
-    """
 
-    df = pd.read_sql(
-        query,
-        conn
-    )
-
-    conn.close()
-
-    return df
-
-
-# ================= GET STATISTICS =================
-def get_statistics():
-
-    conn = get_connection()
-
-    cursor = conn.cursor()
-
-    cursor.execute(
         """
-        SELECT COUNT(*) FROM signals
-        """
-    )
 
-    total = cursor.fetchone()[0]
-
-
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM signals
-        WHERE result = 'WIN'
-        """
-    )
-
-    wins = cursor.fetchone()[0]
-
-
-    cursor.execute(
-        """
-        SELECT COUNT(*)
-        FROM signals
-        WHERE result = 'LOSS'
-        """
-    )
-
-    losses = cursor.fetchone()[0]
-
-
-    winrate = 0
-
-    if total > 0:
-
-        winrate = round(
-            (wins / total) * 100,
-            2
+        df = pd.read_sql(
+            query,
+            conn
         )
 
+        conn.close()
 
-    conn.close()
+        return df
 
-    return {
-        "total": total,
-        "wins": wins,
-        "losses": losses,
-        "winrate": winrate
-    }
+    except Exception as e:
+
+        logger.error(
+            f"❌ RECENT SIGNALS ERROR: {e}"
+        )
+
+        return pd.DataFrame()
 
 
-# ================= SYMBOL PERFORMANCE =================
+# ================= SYMBOL ANALYTICS =================
 def get_symbol_performance():
 
     conn = get_connection()
 
-    query = """
+    if conn is None:
+        return pd.DataFrame()
+
+    try:
+
+        query = """
+
         SELECT
+
             symbol,
+
+            COUNT(*) AS total,
+
             COUNT(*) FILTER (
-                WHERE result = 'WIN'
+                WHERE result='WIN'
             ) AS wins,
 
             COUNT(*) FILTER (
-                WHERE result = 'LOSS'
+                WHERE result='LOSS'
             ) AS losses
 
         FROM signals
@@ -394,13 +401,22 @@ def get_symbol_performance():
         GROUP BY symbol
 
         ORDER BY wins DESC
-    """
 
-    df = pd.read_sql(
-        query,
-        conn
-    )
+        """
 
-    conn.close()
+        df = pd.read_sql(
+            query,
+            conn
+        )
 
-    return df
+        conn.close()
+
+        return df
+
+    except Exception as e:
+
+        logger.error(
+            f"❌ SYMBOL PERFORMANCE ERROR: {e}"
+        )
+
+        return pd.DataFrame()
