@@ -93,6 +93,10 @@ while True:
                     f"{symbol}"
                 )
 
+
+                # ================= SAVE DATABASE =================
+                save_signal(signal)
+              
                 # ================= SEND PUBLIC =================
                 send_public_signal(signal)
 
@@ -104,10 +108,6 @@ while True:
                     get_win_rate()
 
                 )
-
-                # ================= SAVE DATABASE =================
-                save_signal(signal)
-
                 signals_sent += 1
 
                 logger.info(
