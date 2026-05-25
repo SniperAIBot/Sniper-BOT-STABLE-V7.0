@@ -14,29 +14,23 @@ def get_win_rate():
 
         cur = conn.cursor()
 
+        # ================= WINS =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'WIN'
-
+            WHERE result='WIN'
             """
         )
 
         wins = cur.fetchone()[0]
 
+        # ================= LOSSES =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'LOSS'
-
+            WHERE result='LOSS'
             """
         )
 
@@ -79,13 +73,9 @@ def get_expectancy():
         # ================= WINS =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'WIN'
-
+            WHERE result='WIN'
             """
         )
 
@@ -94,28 +84,20 @@ def get_expectancy():
         # ================= LOSSES =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'LOSS'
-
+            WHERE result='LOSS'
             """
         )
 
         losses = cur.fetchone()[0]
 
-        # ================= AVG RR =================
+        # ================= AVG RR WIN =================
         cur.execute(
             """
-
             SELECT AVG(rr)
-
             FROM signals
-
-            WHERE result = 'WIN'
-
+            WHERE result='WIN'
             """
         )
 
@@ -127,21 +109,23 @@ def get_expectancy():
         cur.close()
         conn.close()
 
-        total = wins + losses
+        total_closed = wins + losses
 
-        if total == 0:
+        if total_closed == 0:
             return 0
 
-        win_rate = wins / total
-        loss_rate = losses / total
+        win_rate = wins / total_closed
+        loss_rate = losses / total_closed
 
         expectancy = (
             (win_rate * avg_rr_win)
-            -
-            loss_rate
+            - loss_rate
         )
 
-        return round(expectancy, 2)
+        return round(
+            expectancy,
+            2
+        )
 
     except Exception as e:
 
@@ -152,7 +136,7 @@ def get_expectancy():
         return 0
 
 
-# ================= FULL STATISTICS =================
+# ================= DASHBOARD STATS =================
 def get_statistics():
 
     try:
@@ -162,11 +146,9 @@ def get_statistics():
         if conn is None:
 
             return {
-                "total": 0,
+                "total_trades": 0,
                 "wins": 0,
                 "losses": 0,
-                "breakeven": 0,
-                "timeout": 0,
                 "win_rate": 0,
                 "expectancy": 0,
                 "avg_rr_win": 0
@@ -177,26 +159,19 @@ def get_statistics():
         # ================= TOTAL =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
             """
         )
 
-        total = cur.fetchone()[0]
+        total_trades = cur.fetchone()[0]
 
         # ================= WINS =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'WIN'
-
+            WHERE result='WIN'
             """
         )
 
@@ -205,58 +180,20 @@ def get_statistics():
         # ================= LOSSES =================
         cur.execute(
             """
-
             SELECT COUNT(*)
-
             FROM signals
-
-            WHERE result = 'LOSS'
-
+            WHERE result='LOSS'
             """
         )
 
         losses = cur.fetchone()[0]
 
-        # ================= BREAKEVEN =================
+        # ================= AVG RR WIN =================
         cur.execute(
             """
-
-            SELECT COUNT(*)
-
-            FROM signals
-
-            WHERE result = 'BREAKEVEN'
-
-            """
-        )
-
-        breakeven = cur.fetchone()[0]
-
-        # ================= TIMEOUT =================
-        cur.execute(
-            """
-
-            SELECT COUNT(*)
-
-            FROM signals
-
-            WHERE result = 'TIMEOUT'
-
-            """
-        )
-
-        timeout = cur.fetchone()[0]
-
-        # ================= AVG RR =================
-        cur.execute(
-            """
-
             SELECT AVG(rr)
-
             FROM signals
-
-            WHERE result = 'WIN'
-
+            WHERE result='WIN'
             """
         )
 
@@ -268,19 +205,23 @@ def get_statistics():
         cur.close()
         conn.close()
 
-        # ================= CALCULATIONS =================
         total_closed = wins + losses
 
         if total_closed > 0:
 
-            win_rate = (
-                wins / total_closed
-            ) * 100
+            win_rate = round(
+                (wins / total_closed) * 100,
+                2
+            )
 
-            expectancy = (
-                (wins / total_closed) * avg_rr_win
+            expectancy = round(
+                (
+                    (wins / total_closed)
+                    * avg_rr_win
+                )
                 -
-                (losses / total_closed)
+                (losses / total_closed),
+                2
             )
 
         else:
@@ -290,31 +231,20 @@ def get_statistics():
 
         return {
 
-            "total": total,
+            "total_trades": total_trades,
 
             "wins": wins,
 
             "losses": losses,
 
-            "breakeven": breakeven,
+            "win_rate": win_rate,
 
-            "timeout": timeout,
-
-            "win_rate": round(
-                win_rate,
-                2
-            ),
-
-            "expectancy": round(
-                expectancy,
-                2
-            ),
+            "expectancy": expectancy,
 
             "avg_rr_win": round(
                 avg_rr_win,
                 2
             )
-
         }
 
     except Exception as e:
@@ -325,15 +255,11 @@ def get_statistics():
 
         return {
 
-            "total": 0,
+            "total_trades": 0,
 
             "wins": 0,
 
             "losses": 0,
-
-            "breakeven": 0,
-
-            "timeout": 0,
 
             "win_rate": 0,
 
