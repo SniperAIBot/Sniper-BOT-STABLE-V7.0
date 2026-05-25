@@ -4,14 +4,13 @@ import plotly.express as px
 
 from database import (
     get_all_signals,
-    get_symbol_performance,
-    get_recent_signals
+    get_recent_signals,
+    get_symbol_performance
 )
 
 from performance import (
     get_statistics,
-    get_win_rate,
-    get_expectancy
+    get_win_rate
 )
 
 
@@ -23,47 +22,53 @@ st.set_page_config(
 
 
 # ================= TITLE =================
-st.title(
-    "🚀 SNIPER PRO DASHBOARD V 7.0"
-)
-
-st.caption(
-    "Advanced Trading Analytics System"
-)
+st.title("🚀 SNIPER PRO DASHBOARD")
 
 
 # ================= LOAD DATA =================
 signals_df = get_all_signals()
 
-stats = get_statistics()
+recent_df = get_recent_signals()
 
 symbol_df = get_symbol_performance()
 
-recent_df = get_recent_signals()
-
-win_rate = get_win_rate()
-
-expectancy = get_expectancy()
+stats = get_statistics()
 
 
-# ================= METRICS =================
-st.subheader("📈 System Performance")
+# ================= SAFE DEFAULTS =================
+total_trades = stats.get("total", 0)
 
-col1, col2, col3, col4, col5 = st.columns(5)
+wins = stats.get("wins", 0)
+
+losses = stats.get("losses", 0)
+
+breakeven = stats.get("breakeven", 0)
+
+timeout = stats.get("timeout", 0)
+
+win_rate = stats.get("win_rate", 0)
+
+expectancy = stats.get("expectancy", 0)
+
+avg_rr = stats.get("avg_rr_win", 0)
+
+
+# ================= TOP METRICS =================
+col1, col2, col3, col4 = st.columns(4)
 
 col1.metric(
     "Total Trades",
-    stats["total_trades"]
+    total_trades
 )
 
 col2.metric(
     "Wins",
-    stats["wins"]
+    wins
 )
 
 col3.metric(
     "Losses",
-    stats["losses"]
+    losses
 )
 
 col4.metric(
@@ -71,9 +76,23 @@ col4.metric(
     f"{win_rate}%"
 )
 
+
+# ================= SECOND ROW =================
+col5, col6, col7 = st.columns(3)
+
 col5.metric(
+    "Breakeven",
+    breakeven
+)
+
+col6.metric(
     "Expectancy",
     expectancy
+)
+
+col7.metric(
+    "Average RR",
+    avg_rr
 )
 
 
@@ -117,10 +136,6 @@ if not symbol_df.empty:
         symbol_df,
         x="symbol",
         y="winrate",
-        hover_data=[
-            "wins",
-            "losses"
-        ],
         title="Win Rate By Symbol"
     )
 
@@ -132,7 +147,7 @@ if not symbol_df.empty:
 else:
 
     st.warning(
-        "No symbol analytics available."
+        "No symbol statistics available."
     )
 
 
@@ -142,21 +157,15 @@ st.divider()
 # ================= MARKET REGIME =================
 st.subheader("🔥 Market Regime Distribution")
 
-if not signals_df.empty:
-
-    regime_df = (
-        signals_df.groupby(
-            "market_regime"
-        )
-        .size()
-        .reset_index(name="count")
-    )
+if (
+    not signals_df.empty
+    and "market_regime" in signals_df.columns
+):
 
     regime_chart = px.pie(
-        regime_df,
+        signals_df,
         names="market_regime",
-        values="count",
-        title="Market Regime Distribution"
+        title="Market Regime"
     )
 
     st.plotly_chart(
@@ -167,67 +176,29 @@ if not signals_df.empty:
 else:
 
     st.warning(
-        "No market regime data."
+        "No market regime data available."
     )
 
 
 st.divider()
 
 
-# ================= WIN / LOSS =================
-st.subheader("⚔️ Win vs Loss")
-
-if not signals_df.empty:
-
-    results_df = (
-        signals_df.groupby(
-            "result"
-        )
-        .size()
-        .reset_index(name="count")
-    )
-
-    results_chart = px.pie(
-        results_df,
-        names="result",
-        values="count",
-        title="Win / Loss Distribution"
-    )
-
-    st.plotly_chart(
-        results_chart,
-        use_container_width=True
-    )
-
-
-st.divider()
-
-
-# ================= STRATEGY PERFORMANCE =================
-st.subheader("🧠 Strategy Versions")
+# ================= RESULT DISTRIBUTION =================
+st.subheader("📈 Trade Results")
 
 if (
     not signals_df.empty
-    and "strategy_version" in signals_df.columns
+    and "result" in signals_df.columns
 ):
 
-    strategy_df = (
-        signals_df.groupby(
-            "strategy_version"
-        )
-        .size()
-        .reset_index(name="count")
-    )
-
-    strategy_chart = px.bar(
-        strategy_df,
-        x="strategy_version",
-        y="count",
-        title="Trades Per Strategy Version"
+    result_chart = px.histogram(
+        signals_df,
+        x="result",
+        title="Trade Result Distribution"
     )
 
     st.plotly_chart(
-        strategy_chart,
+        result_chart,
         use_container_width=True
     )
 
@@ -235,7 +206,7 @@ if (
 st.divider()
 
 
-# ================= FULL TRADE HISTORY =================
+# ================= FULL HISTORY =================
 st.subheader("🗂 Full Trade History")
 
 if not signals_df.empty:
