@@ -1,11 +1,7 @@
+pandas
+numpy
 requests
 psycopg2-binary
-flask
-gunicorn
-numpy
-pandas
-dotenv
 streamlit
 plotly
-pandas
-psycopg2-binary
+python-dotenv
