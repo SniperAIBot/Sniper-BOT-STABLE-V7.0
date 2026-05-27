@@ -1,5 +1,3 @@
-import time
-
 from scanner import get_klines
 
 from database import (
@@ -8,12 +6,6 @@ from database import (
 )
 
 from logger import logger
-
-
-# ================= CONFIG =================
-MAX_TRADE_DURATION = 14400
-
-BREAKEVEN_TRIGGER = 0.75
 
 
 # ================= MONITOR =================
@@ -25,232 +17,49 @@ def monitor_signals():
 
         if not signals:
 
-            logger.info(
-                "📭 NO OPEN SIGNALS"
-            )
+            logger.info("📭 NO OPEN SIGNALS")
 
             return
-
-        logger.info(
-            f"👀 MONITORING "
-            f"{len(signals)} SIGNALS"
-        )
 
         for signal in signals:
 
             try:
 
-                signal_id = signal.get("id")
-
-                symbol = signal.get("symbol")
-
-                direction = signal.get("direction")
-
-                entry = float(
-                    signal.get("entry")
-                )
-
-                tp = float(
-                    signal.get("take_profit")
-                )
-
-                sl = float(
-                    signal.get("stop_loss")
-                )
-
-                created_at = signal.get(
-                    "created_at"
-                )
-
-                if (
-                    not symbol
-                    or not direction
-                ):
-
-                    continue
-
                 candles = get_klines(
-                    symbol=symbol,
-                    interval="5m",
-                    limit=2
+                    signal["symbol"],
+                    "5m",
+                    2
                 )
 
                 if not candles:
-
                     continue
 
                 current_price = candles[-1]["close"]
 
-                # ================= RISK =================
-                if direction == "BUY":
+                if signal["direction"] == "BUY":
 
-                    risk = (
-                        entry - sl
-                    )
+                    if current_price >= signal["take_profit"]:
 
-                    current_profit = (
-                        current_price - entry
-                    )
+                        close_signal(signal["id"], "WIN")
 
-                else:
+                    elif current_price <= signal["stop_loss"]:
 
-                    risk = (
-                        sl - entry
-                    )
+                        close_signal(signal["id"], "LOSS")
 
-                    current_profit = (
-                        entry - current_price
-                    )
+                elif signal["direction"] == "SELL":
 
-                if risk <= 0:
+                    if current_price <= signal["take_profit"]:
 
-                    continue
+                        close_signal(signal["id"], "WIN")
 
-                rr_progress = (
-                    current_profit / risk
-                )
+                    elif current_price >= signal["stop_loss"]:
 
-                # ================= TIMEOUT EXIT =================
-                if created_at:
+                        close_signal(signal["id"], "LOSS")
 
-                    try:
+            except Exception as e:
 
-                        trade_age = (
-                            time.time() -
-                            created_at.timestamp()
-                        )
-
-                        if trade_age > MAX_TRADE_DURATION:
-
-                            close_signal(
-                                signal_id,
-                                "TIMEOUT"
-                            )
-
-                            logger.info(
-                                f"⌛ TIMEOUT EXIT: "
-                                f"{symbol}"
-                            )
-
-                            continue
-
-                    except:
-
-                        pass
-
-                # ================= BUY =================
-                if direction == "BUY":
-
-                    # TAKE PROFIT
-                    if current_price >= tp:
-
-                        close_signal(
-                            signal_id,
-                            "WIN"
-                        )
-
-                        logger.info(
-                            f"🏆 TP HIT: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-                    # BREAKEVEN EXIT
-                    if (
-                        rr_progress >=
-                        BREAKEVEN_TRIGGER
-                        and current_price <= entry
-                    ):
-
-                        close_signal(
-                            signal_id,
-                            "BREAKEVEN"
-                        )
-
-                        logger.info(
-                            f"⚖️ BREAKEVEN: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-                    # STOP LOSS
-                    if current_price <= sl:
-
-                        close_signal(
-                            signal_id,
-                            "LOSS"
-                        )
-
-                        logger.info(
-                            f"💀 SL HIT: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-                # ================= SELL =================
-                elif direction == "SELL":
-
-                    # TAKE PROFIT
-                    if current_price <= tp:
-
-                        close_signal(
-                            signal_id,
-                            "WIN"
-                        )
-
-                        logger.info(
-                            f"🏆 TP HIT: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-                    # BREAKEVEN EXIT
-                    if (
-                        rr_progress >=
-                        BREAKEVEN_TRIGGER
-                        and current_price >= entry
-                    ):
-
-                        close_signal(
-                            signal_id,
-                            "BREAKEVEN"
-                        )
-
-                        logger.info(
-                            f"⚖️ BREAKEVEN: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-                    # STOP LOSS
-                    if current_price >= sl:
-
-                        close_signal(
-                            signal_id,
-                            "LOSS"
-                        )
-
-                        logger.info(
-                            f"💀 SL HIT: "
-                            f"{symbol}"
-                        )
-
-                        continue
-
-            except Exception as signal_error:
-
-                logger.error(
-                    f"❌ MONITOR SIGNAL ERROR: "
-                    f"{signal_error}"
-                )
+                logger.error(f"❌ MONITOR SIGNAL ERROR: {e}")
 
     except Exception as e:
 
-        logger.error(
-            f"❌ MONITOR ERROR: {e}"
-        )
+        logger.error(f"❌ MONITOR ERROR: {e}")
