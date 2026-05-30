@@ -5,7 +5,7 @@ from strategy import analyze
 from logger import logger
 
 
-BINANCE_URL = "https://api.binance.com"
+BINANCE_URL = "https://data-api.binance.com"
 
 
 SYMBOLS = [
