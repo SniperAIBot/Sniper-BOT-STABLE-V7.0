@@ -48,13 +48,19 @@ def get_klines(
             timeout=10
         )
 
-        if response.status_code != 200:
+if response.status_code != 200:
 
-            logger.warning(
-                f"⚠️ BINANCE ERROR: {symbol}"
-            )
+    logger.warning(
+        f"⚠️ BINANCE ERROR: "
+        f"{symbol} "
+f"STATUS={response.status_code}"
+    )
 
-            return None
+    logger.warning(
+        response.text[:200]
+    )
+
+    return None
 
         data = response.json()
 
