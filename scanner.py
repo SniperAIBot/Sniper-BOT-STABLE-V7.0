@@ -8,7 +8,7 @@ from logger import logger
 BASE_URL = "https://api.binance.com"
 
 
-# ================= TOP COINS =================
+# ================= TOP 10 COINS =================
 SYMBOLS = [
     "BTCUSDT",
     "ETHUSDT",
@@ -83,47 +83,10 @@ def get_klines(
         return None
 
 
-# ================= MARKET STATS =================
-def get_ticker_stats(symbol):
-
-    try:
-
-        response = requests.get(
-            f"{BASE_URL}/api/v3/ticker/24hr",
-            params={
-                "symbol": symbol
-            },
-            timeout=10
-        )
-
-        if response.status_code != 200:
-            return None
-
-        return response.json()
-
-    except Exception:
-
-        return None
-
-
 # ================= MARKET FILTER =================
+# Disabled intentionally.
+# Strategy.py already performs the real filtering.
 def is_valid_market(symbol):
-
-    stats = get_ticker_stats(symbol)
-
-    if not stats:
-        return False
-
-    price_change = abs(
-        float(
-            stats["priceChangePercent"]
-        )
-    )
-
-    # Coin must be moving
-    if price_change < 0.8:
-
-        return False
 
     return True
 
@@ -132,6 +95,7 @@ def is_valid_market(symbol):
 def in_cooldown(symbol):
 
     if symbol not in LAST_SIGNAL_TIME:
+
         return False
 
     elapsed = (
@@ -152,6 +116,7 @@ def correlation_filter(
 ):
 
     if not signals:
+
         return True
 
     same_direction = sum(
@@ -199,15 +164,6 @@ def scan_market():
                 continue
 
 
-            if not is_valid_market(symbol):
-
-                logger.info(
-                    f"⚠️ MARKET FILTERED: {symbol}"
-                )
-
-                continue
-
-
             candles_5m = get_klines(
                 symbol,
                 "5m"
@@ -224,11 +180,9 @@ def scan_market():
             )
 
             if (
-
                 not candles_5m
                 or not candles_15m
                 or not candles_1h
-
             ):
 
                 logger.warning(
@@ -236,6 +190,11 @@ def scan_market():
                 )
 
                 continue
+
+
+            logger.info(
+                f"📈 ANALYZING {symbol}"
+            )
 
 
             signal = analyze(
@@ -250,9 +209,21 @@ def scan_market():
 
             )
 
+
             if signal is None:
 
+                logger.info(
+                    f"❌ NO SETUP: {symbol}"
+                )
+
                 continue
+
+
+            logger.info(
+                f"🔥 SIGNAL FOUND "
+                f"{symbol} "
+                f"{signal['direction']}"
+            )
 
 
             if not correlation_filter(
@@ -273,19 +244,22 @@ def scan_market():
             )
 
             logger.info(
-                f"✅ SIGNAL: {symbol}"
+                f"✅ SIGNAL ADDED: "
+                f"{symbol}"
             )
 
 
         except Exception as e:
 
             logger.error(
-                f"❌ SCAN ERROR {symbol}: {e}"
+                f"❌ SCAN ERROR "
+                f"{symbol}: {e}"
             )
 
 
     logger.info(
-        f"📊 FOUND {len(signals)} SIGNALS"
+        f"📊 FOUND "
+        f"{len(signals)} SIGNALS"
     )
 
     return signals
