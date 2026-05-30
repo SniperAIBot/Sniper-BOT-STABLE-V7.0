@@ -19,73 +19,53 @@ SYMBOLS = [
     "DOGEUSDT",
     "TRXUSDT",
     "AVAXUSDT",
-    "LINKUSDT"
+    "LINKUSDT",
 ]
 
 
 # ================= COOLDOWN =================
 LAST_SIGNAL_TIME = {}
-
 COOLDOWN_MINUTES = 90
 
 
 # ================= GET KLINES =================
-def get_klines(
-    symbol,
-    interval,
-    limit=200
-):
-
+def get_klines(symbol, interval, limit=200):
     try:
-
         response = requests.get(
             f"{BASE_URL}/api/v3/klines",
             params={
                 "symbol": symbol,
                 "interval": interval,
-                "limit": limit
+                "limit": limit,
             },
-            timeout=10
+            timeout=10,
         )
 
-if response.status_code != 200:
-
-    logger.warning(
-        f"⚠️ BINANCE ERROR: "
-        f"{symbol} "
-f"STATUS={response.status_code}"
-    )
-
-    logger.warning(
-        response.text[:200]
-    )
-
-    return None
+        if response.status_code != 200:
+            logger.warning(
+                f"⚠️ BINANCE ERROR: {symbol} STATUS={response.status_code}"
+            )
+            logger.warning(response.text[:200])
+            return None
 
         data = response.json()
 
         candles = []
-
         for candle in data:
-
-            candles.append({
-
-                "open": float(candle[1]),
-                "high": float(candle[2]),
-                "low": float(candle[3]),
-                "close": float(candle[4]),
-                "volume": float(candle[5])
-
-            })
+            candles.append(
+                {
+                    "open": float(candle[1]),
+                    "high": float(candle[2]),
+                    "low": float(candle[3]),
+                    "close": float(candle[4]),
+                    "volume": float(candle[5]),
+                }
+            )
 
         return candles
 
     except Exception as e:
-
-        logger.error(
-            f"❌ KLINES ERROR {symbol}: {e}"
-        )
-
+        logger.error(f"❌ KLINES ERROR {symbol}: {e}")
         return None
 
 
@@ -93,56 +73,31 @@ f"STATUS={response.status_code}"
 # Disabled intentionally.
 # Strategy.py already performs the real filtering.
 def is_valid_market(symbol):
-
     return True
 
 
 # ================= COOLDOWN =================
 def in_cooldown(symbol):
-
     if symbol not in LAST_SIGNAL_TIME:
-
         return False
 
-    elapsed = (
-        time.time()
-        -
-        LAST_SIGNAL_TIME[symbol]
-    )
-
-    return elapsed < (
-        COOLDOWN_MINUTES * 60
-    )
+    elapsed = time.time() - LAST_SIGNAL_TIME[symbol]
+    return elapsed < (COOLDOWN_MINUTES * 60)
 
 
 # ================= CORRELATION FILTER =================
-def correlation_filter(
-    signals,
-    new_signal
-):
-
+def correlation_filter(signals, new_signal):
     if not signals:
-
         return True
 
     same_direction = sum(
-
         1
-
         for signal in signals
-
-        if signal["direction"]
-        ==
-        new_signal["direction"]
-
+        if signal["direction"] == new_signal["direction"]
     )
 
     if same_direction >= 3:
-
-        logger.info(
-            "⚠️ CORRELATION BLOCKED"
-        )
-
+        logger.info("⚠️ CORRELATION BLOCKED")
         return False
 
     return True
@@ -150,122 +105,47 @@ def correlation_filter(
 
 # ================= SCAN MARKET =================
 def scan_market():
-
     signals = []
 
-    logger.info(
-        "🔍 SCANNING MARKET"
-    )
+    logger.info("🔍 SCANNING MARKET")
 
     for symbol in SYMBOLS:
-
         try:
-
             if in_cooldown(symbol):
-
-                logger.info(
-                    f"⏳ COOLDOWN: {symbol}"
-                )
-
+                logger.info(f"⏳ COOLDOWN: {symbol}")
                 continue
 
+            candles_5m = get_klines(symbol, "5m")
+            candles_15m = get_klines(symbol, "15m")
+            candles_1h = get_klines(symbol, "1h")
 
-            candles_5m = get_klines(
-                symbol,
-                "5m"
-            )
-
-            candles_15m = get_klines(
-                symbol,
-                "15m"
-            )
-
-            candles_1h = get_klines(
-                symbol,
-                "1h"
-            )
-
-            if (
-                not candles_5m
-                or not candles_15m
-                or not candles_1h
-            ):
-
-                logger.warning(
-                    f"⚠️ NO DATA: {symbol}"
-                )
-
+            if not candles_5m or not candles_15m or not candles_1h:
+                logger.warning(f"⚠️ NO DATA: {symbol}")
                 continue
 
+            logger.info(f"📈 ANALYZING {symbol}")
 
-            logger.info(
-                f"📈 ANALYZING {symbol}"
-            )
-
-
-            signal = analyze(
-
-                symbol,
-
-                candles_5m,
-
-                candles_15m,
-
-                candles_1h
-
-            )
-
+            signal = analyze(symbol, candles_5m, candles_15m, candles_1h)
 
             if signal is None:
-
-                logger.info(
-                    f"❌ NO SETUP: {symbol}"
-                )
-
+                logger.info(f"❌ NO SETUP: {symbol}")
                 continue
 
-
             logger.info(
-                f"🔥 SIGNAL FOUND "
-                f"{symbol} "
-                f"{signal['direction']}"
+                f"🔥 SIGNAL FOUND {symbol} {signal['direction']}"
             )
 
-
-            if not correlation_filter(
-                signals,
-                signal
-            ):
-
+            if not correlation_filter(signals, signal):
                 continue
 
+            LAST_SIGNAL_TIME[symbol] = time.time()
+            signals.append(signal)
 
-            LAST_SIGNAL_TIME[
-                symbol
-            ] = time.time()
-
-
-            signals.append(
-                signal
-            )
-
-            logger.info(
-                f"✅ SIGNAL ADDED: "
-                f"{symbol}"
-            )
-
+            logger.info(f"✅ SIGNAL ADDED: {symbol}")
 
         except Exception as e:
+            logger.error(f"❌ SCAN ERROR {symbol}: {e}")
 
-            logger.error(
-                f"❌ SCAN ERROR "
-                f"{symbol}: {e}"
-            )
-
-
-    logger.info(
-        f"📊 FOUND "
-        f"{len(signals)} SIGNALS"
-    )
+    logger.info(f"📊 FOUND {len(signals)} SIGNALS")
 
     return signals
