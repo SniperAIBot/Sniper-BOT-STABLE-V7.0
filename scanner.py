@@ -5,7 +5,7 @@ from strategy import analyze
 from logger import logger
 
 
-BASE_URL = "https://api.binance.com"
+BASE_URL = "https://data-api.binance.com"
 
 
 # ================= TOP 10 COINS =================
